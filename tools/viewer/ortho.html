@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Ortho</title><style>html,body{margin:0;background:#fff}</style></head>
+<body><script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+const q = new URLSearchParams(location.search);
+const W = innerWidth, H = innerHeight;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xffffff);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 3));
+// x0..x1 (horizontal), y0..y1 (vertical) in model units; view axis: 'z' (side), 'x' (front), 'y' (top)
+const [x0, x1, y0, y1] = (q.get('box') || '-0.65,0.65,-0.05,0.68').split(',').map(Number);
+const axis = q.get('axis') || 'z';
+const cam = new THREE.OrthographicCamera(x0, x1, y1, y0, -10, 10);
+if (axis === 'x') { cam.position.set(5, 0, 0); cam.up.set(0, 1, 0); cam.lookAt(0, 0, 0); cam.left = -x1; cam.right = -x0; }
+if (axis === 'y') { cam.position.set(0, 5, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0); }
+if (axis === 'z') { cam.position.set(0, 0, 5); cam.lookAt(0, 0, 0); }
+// slab: only show vertices whose depth coordinate is within [d0,d1]
+const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(q.get('m') || '/public/models/bike-raw.glb');
+const root = gltf.scene; scene.add(root);
+root.traverse((o) => { if (o.isMesh) { o.material.side = THREE.DoubleSide; if (q.get('flat')) o.material = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); } });
+if (q.get('slab')) {
+  const [d0, d1] = q.get('slab').split(',').map(Number);
+  const k = axis === 'z' ? 2 : axis === 'x' ? 0 : 1;
+  const n = new THREE.Vector3(); n.setComponent(k, 1);
+  r.clippingPlanes = [new THREE.Plane(n.clone(), -d0), new THREE.Plane(n.clone().negate(), d1)];
+}
+cam.updateProjectionMatrix();
+r.render(scene, cam);
+// grid
+const c2 = document.createElement('canvas'); c2.width = W; c2.height = H; c2.style.cssText = 'position:absolute;left:0;top:0';
+document.body.appendChild(c2); const g = c2.getContext('2d');
+const L = cam.left, R = cam.right;
+const px = (x) => ((x - L) / (R - L)) * W, py = (y) => ((y1 - y) / (y1 - y0)) * H;
+const step = Number(q.get('step') || 0.05);
+g.font = '11px sans-serif';
+for (let x = Math.ceil(L / step) * step; x <= R; x += step) { g.strokeStyle = Math.abs(Math.round(x / step) % 2) ? 'rgba(255,0,0,.25)' : 'rgba(255,0,0,.6)'; g.beginPath(); g.moveTo(px(x), 0); g.lineTo(px(x), H); g.stroke(); g.fillStyle = '#c00'; g.fillText(x.toFixed(2), px(x) + 2, 12); }
+for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) { g.strokeStyle = Math.abs(Math.round(y / step) % 2) ? 'rgba(0,0,255,.25)' : 'rgba(0,0,255,.6)'; g.beginPath(); g.moveTo(0, py(y)); g.lineTo(W, py(y)); g.stroke(); g.fillStyle = '#00c'; g.fillText(y.toFixed(2), 2, py(y) - 2); }
+window.__ready = true;
+</script></body></html>

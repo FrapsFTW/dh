@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Downhill</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      --fg: #fff; --panel: rgba(10, 13, 18, .78); --panel2: rgba(10, 13, 18, .9); --accent: #e8402a;
+      --ahead: #3ddc6a; --behind: #ff5a47; --muted: rgba(255, 255, 255, .62);
+    }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #bccfdc; color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    canvas { display: block; }
+    .hidden { display: none !important; }
+    #hud { position: fixed; inset: 0; pointer-events: none; }
+    .tab { font-variant-numeric: tabular-nums; }
+
+    /* Le chrono, en haut à gauche, comme à la télé. */
+    #timer { position: absolute; top: 18px; left: 18px; display: flex; align-items: stretch; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+    #timer .tag { background: var(--accent); font-weight: 900; font-size: 14px; letter-spacing: .08em; padding: 0 10px; display: flex; align-items: center; }
+    #timer .time { background: var(--panel2); font-size: 34px; font-weight: 800; padding: 4px 14px; min-width: 150px; text-align: right; }
+    #timer .mode { background: var(--panel); font-size: 11px; font-weight: 800; letter-spacing: .08em; padding: 0 9px; display: flex; align-items: center; color: var(--muted); }
+    .modes { display: flex; gap: 8px; margin: 4px 0 6px; flex-wrap: wrap; }
+    .modes button { font: inherit; font-weight: 800; font-size: 15px; color: var(--fg); background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); padding: 7px 14px; cursor: pointer; }
+    .modes button.on { background: var(--accent); border-color: var(--accent); }
+    #modeBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
+    #splitBox { position: absolute; top: 70px; left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .split { display: flex; font-size: 15px; font-weight: 700; background: var(--panel); }
+    .split .n { background: rgba(255,255,255,.12); padding: 4px 8px; min-width: 64px; }
+    .split .t { padding: 4px 10px; min-width: 70px; text-align: right; }
+    .split .d { padding: 4px 10px; min-width: 64px; text-align: right; }
+    .ahead { background: var(--ahead) !important; color: #06210f; }
+    .behind { background: var(--behind) !important; color: #2a0702; }
+    #best { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-size: 14px; background: var(--panel); padding: 5px 12px; font-weight: 600; }
+    #best:empty { display: none; }
+
+    /* La progression sur la piste, en haut à droite. */
+    #progress { position: absolute; top: 22px; right: 22px; width: 240px; }
+    #progress .bar { height: 6px; background: rgba(255,255,255,.25); position: relative; }
+    #progress .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #fff; }
+    #progress .bar b { position: absolute; top: -4px; width: 2px; height: 14px; background: rgba(255,255,255,.7); }
+    #progress .bar s { position: absolute; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.35); margin-left: -5px; border: 2px solid rgba(255,255,255,.75); }
+    #progress .lbl { display: flex; justify-content: space-between; font-size: 12px; margin-top: 6px; color: var(--muted); text-shadow: 0 1px 2px rgba(0,0,0,.6); font-weight: 600; }
+
+    /* La vitesse, en bas à droite. */
+    #speed { position: absolute; bottom: 20px; right: 22px; background: var(--panel); padding: 8px 14px; text-align: right; min-width: 110px; }
+    #speed .v { font-size: 40px; font-weight: 800; line-height: 1; }
+    #speed .u { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .06em; }
+
+    #message { position: absolute; top: 33%; left: 50%; transform: translate(-50%, -50%); text-align: center; white-space: pre-line; }
+    #message .big { font-size: 64px; font-weight: 900; letter-spacing: .02em; text-shadow: 0 3px 18px rgba(0,0,0,.5); }
+    #message .small { font-size: 18px; font-weight: 600; margin-top: 6px; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+    #message .pill { display: inline-block; background: var(--panel2); padding: 8px 18px; font-size: 22px; font-weight: 800; }
+
+    #inputs { position: absolute; bottom: 20px; left: 20px; display: grid; grid-template-columns: auto 110px; gap: 5px 10px; font-size: 11px; align-items: center; background: var(--panel); padding: 9px 11px; color: var(--muted); font-weight: 600; }
+    .bar2 { height: 7px; background: rgba(255,255,255,.16); position: relative; overflow: hidden; }
+    .bar2 > i { position: absolute; top: 0; bottom: 0; left: 0; background: #ffd34d; }
+    .bar2.center > i { left: 50%; background: #7fc8ff; }
+    .bar2.center::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(255,255,255,.6); }
+    #surface { grid-column: 1 / -1; }
+
+    /* Les écrans : aide et résultats. */
+    .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(6, 9, 13, .55); pointer-events: auto; }
+    .card { background: rgba(12, 16, 22, .95); padding: 26px 30px; max-width: 820px; width: calc(100% - 32px); box-sizing: border-box; line-height: 1.45; box-shadow: 0 12px 50px rgba(0,0,0,.45); border-top: 4px solid var(--accent); max-height: calc(100% - 32px); overflow: auto; }
+    .card h1 { margin: 0 0 4px; font-size: 28px; font-weight: 900; letter-spacing: .01em; }
+    .card p { margin: 6px 0 14px; color: rgba(255,255,255,.82); }
+    .card table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    .card td, .card th { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
+    .card th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+    kbd { background: rgba(255,255,255,.13); padding: 1px 6px; font-family: inherit; font-size: 13px; white-space: nowrap; }
+    .go { margin-top: 16px; font-weight: 800; font-size: 16px; }
+    .tips { margin-top: 10px; font-size: 13px; color: rgba(255,255,255,.75); }
+    #pad { margin-top: 8px; font-size: 13px; color: var(--muted); }
+    #results .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 16px; }
+    #results .row b { font-variant-numeric: tabular-nums; }
+    #results .final { font-size: 52px; font-weight: 900; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
+    #loading { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; font-size: 18px; color: #1d2b38; font-weight: 600; background: #bccfdc; }
+    #loading .b { width: 260px; height: 4px; background: rgba(0,0,0,.12); }
+    #loading .b i { display: block; height: 100%; width: 0; background: #1d2b38; transition: width .2s; }
+    @media (max-width: 760px) {
+      #timer .time { font-size: 26px; min-width: 110px; } #speed .v { font-size: 30px; } #inputs { display: none; }
+      #progress { width: 140px; } #message .big { font-size: 42px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading"><div id="loadText">Construction de la piste…</div><div class="b"><i id="loadBar"></i></div></div>
+  <div id="hud" class="hidden">
+    <div id="timer"><div class="tag">DH</div><div class="time tab" id="chrono">0:00.00</div><div class="mode" id="modeTag"></div></div>
+    <div id="splitBox"></div>
+    <div id="best" class="tab"></div>
+    <div id="progress"><div class="bar" id="progBar"><i id="progFill"></i></div><div class="lbl"><span id="progLeft">Départ</span><span id="progRight"></span></div></div>
+    <div id="message"></div>
+    <div id="speed"><div class="v tab" id="speedV">0</div><div class="u" id="speedU">KM/H</div></div>
+    <div id="inputs">
+      <span>Direction</span><div class="bar2 center"><i id="b-steer"></i></div>
+      <span>Frein avant</span><div class="bar2"><i id="b-front"></i></div>
+      <span>Frein arrière</span><div class="bar2"><i id="b-rear"></i></div>
+      <span>Poids</span><div class="bar2 center"><i id="b-weight"></i></div>
+      <span>Saut</span><div class="bar2"><i id="b-hop"></i></div>
+      <span id="surface"></span>
+    </div>
+  </div>
+  <div id="help" class="screen hidden">
+    <div class="card">
+      <h1>Downhill</h1>
+      <p>Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, quatre temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
+      <div class="modes"><button data-mode="normal">Normal</button><button data-mode="ultra">Ultra-réaliste</button></div>
+      <div id="modeBlurb"></div>
+      <table>
+        <tr><th></th><th>Manette (recommandée)</th><th>Clavier</th></tr>
+        <tr><td>Tourner</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd></td></tr>
+        <tr><td>Poids en avant / en arrière</td><td>stick gauche ↕</td><td><kbd>E</kbd> / <kbd>A</kbd></td></tr>
+        <tr><td>Frein avant · frein arrière</td><td>gâchette droite · gauche</td><td><kbd>S</kbd> ou <kbd>↓</kbd> les deux, <kbd>Maj</kbd> l'arrière seul</td></tr>
+        <tr><td>Se comprimer puis sauter</td><td><kbd>A</kbd> (maintenir, relâcher)</td><td><kbd>Espace</kbd> (maintenir, relâcher)</td></tr>
+        <tr><td>Figure (en l'air)</td><td><kbd>A</kbd> maintenu + stick : ↓ backflip, ↑ frontflip, ↔ 360</td><td><kbd>Espace</kbd> maintenu + <kbd>A</kbd> backflip, <kbd>E</kbd> frontflip, <kbd>Q</kbd> <kbd>D</kbd> 360</td></tr>
+        <tr><td>Pédaler</td><td><kbd>X</kbd> ou <kbd>RB</kbd></td><td><kbd>Z</kbd> ou <kbd>↑</kbd></td></tr>
+        <tr><td>Regarder autour</td><td>stick droit</td><td></td></tr>
+        <tr><td>Repartir du dernier point</td><td><kbd>Y</kbd> ou <kbd>B</kbd></td><td><kbd>R</kbd></td></tr>
+        <tr><td>Recommencer la manche</td><td><kbd>Start</kbd></td><td><kbd>Entrée</kbd></td></tr>
+        <tr><td>Vue extérieure · fantôme du record</td><td><kbd>Select</kbd></td><td><kbd>C</kbd> · <kbd>F</kbd></td></tr>
+        <tr><td>Changer de mode (avant le départ)</td><td><kbd>LB</kbd></td><td><kbd>M</kbd></td></tr>
+        <tr><td>Réglages · pilote automatique · aide</td><td></td><td><kbd>G</kbd> · <kbd>P</kbd> · <kbd>H</kbd></td></tr>
+      </table>
+      <div class="tips">Conseils de pilote : freine avant le virage, pas dedans. Recule ton poids dans les pentes raides et quand tu freines fort. Les virages relevés se prennent bien plus vite que les plats. Comprime-toi avant une bosse et relâche au sommet pour sauter plus loin. Ne freine pas en l'air : la roue se bloque et tu atterris en glissant.<br>Figures : le saut d'arrivée est taillé pour (plus d'une seconde en l'air). Groupé, tu tournes plus vite ; lâche le bouton pour t'ouvrir et ralentir la rotation avant de te poser. En Normal, le pilote finit la rotation si tu as lâché au bon moment ; en Ultra-réaliste, c'est à toi de l'arrêter (stick dans l'autre sens, toujours groupé) et de te poser droit.</div>
+      <div class="go">Pédale ou appuie sur A pour lancer le compte à rebours.</div>
+      <div id="pad"></div>
+    </div>
+  </div>
+  <div id="results" class="screen hidden">
+    <div class="card">
+      <div id="resTitle" style="font-weight:800;color:var(--muted);letter-spacing:.08em;font-size:13px">ARRIVÉE</div>
+      <div class="final" id="resTime">0:00.00</div>
+      <div id="resDelta" style="font-weight:800;font-size:18px"></div>
+      <div id="resRows" style="margin-top:14px"></div>
+      <div class="go">Entrée ou Start : nouvelle manche · F : affronter ton fantôme</div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

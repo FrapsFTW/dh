@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Modèle</title><style>html,body{margin:0;background:#8a9aa8}</style></head>
+<body><script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+const q = new URLSearchParams(location.search);
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+r.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8a9aa8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.5); sun.position.set(2, 4, 3); scene.add(sun);
+const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 50);
+const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(q.get('m') || '/public/models/bike-raw.glb');
+const root = gltf.scene; scene.add(root);
+const COLORS = { bras: 0x22aaaa, cadre: 0x3366ff, direction: 0xffaa00, fourreaux: 0xff3333, roueAvant: 0x22cc44, roueArriere: 0xcc22cc };
+if (q.has('parts')) root.traverse((o) => { if (o.isMesh) { const n = o.name; o.material = new THREE.MeshStandardMaterial({ color: COLORS[n] ?? 0x888888 }); } });
+if (q.has('steer')) {
+  const d = root.getObjectByName('direction');
+  const axis = new THREE.Vector3(0, Math.sin(63 * Math.PI / 180), Math.cos(63 * Math.PI / 180));
+  d.quaternion.setFromAxisAngle(axis, Number(q.get('steer')) * Math.PI / 180);
+  const f = root.getObjectByName('fourreaux');
+  f.position.addScaledVector(axis.clone().applyQuaternion(d.quaternion.clone().invert()), Number(q.get('comp') || 0));
+  root.getObjectByName('roueAvant').rotation.x = 0.5;
+  const bras = root.getObjectByName('bras'), rw = root.getObjectByName('roueArriere');
+  if (bras) bras.rotation.x = -Math.asin(Number(q.get('comp') || 0) / rw.position.length());
+}
+const box = new THREE.Box3().setFromObject(root); const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+window.__info = { min: box.min.toArray(), max: box.max.toArray() };
+const d = Math.max(s.x, s.y, s.z) * 2.2;
+const views = { side: [0, 0, 1], front: [1, 0, 0], top: [0, 1, 0.001], persp: [0.8, 0.5, 0.9], back: [-1, 0.1, 0], under: [0, -1, 0.001] };
+const v = new THREE.Vector3(...(views[q.get('v') || 'side'])).normalize();
+cam.position.copy(c).addScaledVector(v, d); cam.lookAt(c);
+const axes = new THREE.AxesHelper(0.3); scene.add(axes);
+r.render(scene, cam); window.__ready = true;
+</script></body></html>
