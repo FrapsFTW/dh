@@ -31,6 +31,10 @@ const jobs = quick
     ['foret', '?autopilot&shot&cam=chase&depart=250&vitesse=10', [1]],
     ['backflip', '?autopilot&shot&cam=chase&mode=normal&figure=backflip', [75.95, 76.25, 76.55, 78]],
     ['backflip-casque', '?autopilot&shot&mode=normal&figure=backflip', [76.25]],
+    // Les bras et les mains sur le cintre, en vue subjective et de l'extérieur.
+    ['bras', '?autopilot&shot&depart=40&vitesse=6', [0.4]],
+    ['bras-virage', '?autopilot&shot&depart=196&vitesse=7', [0.6]],
+    ['bras-exterieur', '?autopilot&shot&cam=chase&depart=40&vitesse=6', [0.4]],
     // La Grande Combe : un passage par tronçon.
     ['alpes-crete', '?carte=alpes&autopilot&shot&cam=chase&depart=40&vitesse=8', [0.6]],
     ['alpes-crete-casque', '?carte=alpes&autopilot&shot&depart=120&vitesse=11', [0.5]],

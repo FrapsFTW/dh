@@ -150,6 +150,8 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
   le pont et le torrent.
 - `src/render/sky.js` : ciel, nuages, montagnes à l'horizon (en haute montagne : sommets enneigés, couloirs, brume).
 - `src/render/bikeModel.js` et `src/render/rider.js` : le vélo (le modèle 3D fourni) et le pilote articulé.
+- `src/render/arms.js` : les bras et les mains du pilote, détaillés (`public/models/bras.glb`) : posés sur le cintre à
+  chaque image, doigts refermés sur les poignées, maillot et gants peints d'après des zones marquées sur le modèle.
 - `src/audio.js` : le son, entièrement synthétisé.
 
 ## Le vélo
@@ -179,5 +181,7 @@ npm run trace    # le pilote auto descend la piste et imprime son état
 - [three.js](https://threejs.org) (MIT), [Rapier](https://rapier.rs) (Apache 2.0), [lil-gui](https://lil-gui.georgealways.com) (MIT),
   [glTF Transform](https://gltf-transform.dev) et [meshoptimizer](https://github.com/zeux/meshoptimizer) (MIT).
 - La physique du vélo s'inspire de [Terrain Rider](https://terrainrider.com).
+- Les bras : [fps arms](https://opengameart.org/content/fps-arms-rigged-only) de para (CC0), fait avec
+  [MakeHuman](http://www.makehumancommunity.org).
 - Les arbres : [EZ-Tree](https://github.com/dgreenheck/ez-tree) de Daniel Greenheck (MIT), écorces CC0 de TextureCan
   et Poly Haven.

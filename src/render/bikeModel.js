@@ -59,7 +59,7 @@ function placeholderBike() {
   const roueAvant = wheel(G.frontRadius); roueAvant.name = 'roueAvant';
   fourreaux.add(roueAvant);
   for (const s of [-1, 1]) tube([s * 0.06, 0, 0], [s * 0.06, -fourreaux.position.y - 0.25, -fourreaux.position.z + 0.0], 0.02, goldMat, fourreaux);
-  tube([-G.grips.halfWidth, 0.06, 0.04], [G.grips.halfWidth, 0.06, 0.04], 0.016, frameMat, direction);
+  tube([-G.grips.barEnd, 0.06, 0.04], [G.grips.barEnd, 0.06, 0.04], 0.016, frameMat, direction);
   return root;
 }
 
@@ -69,7 +69,7 @@ export function createBikeModel({ ghost = false } = {}) {
   group.name = ghost ? 'fantome' : 'velo';
   let bike = placeholderBike();
   group.add(bike);
-  const rider = createRider();
+  const rider = createRider({ detailedArms: !ghost });
   group.add(rider.group);
   const ghostMat = new THREE.MeshStandardMaterial({ color: lin('#9fd6ff'), emissive: lin('#2a6ea8'), transparent: true, opacity: 0.32, depthWrite: false, roughness: 0.5 });
   const ghostify = (o) => o.traverse((m) => { if (m.isMesh) { m.material = ghostMat; m.castShadow = false; m.receiveShadow = false; } });

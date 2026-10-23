@@ -12,8 +12,8 @@ export const CAMERA_SETTINGS = {
   pitchFollow: 0.55, // part du tangage du vélo que suit la tête
   lookDown: 9, // le regard porte un peu vers le bas, vers la trajectoire (degrés)
   lookAhead: 0.6, // la tête se tourne vers la sortie du virage
-  shake: 0.6, // secousses (0 = aucune) : à baisser si on a le mal des transports
-  buzz: 1, // vibration rapide à haute vitesse, plus forte dans les cailloux et les racines (0 = aucune)
+  shake: 0.3, // secousses (0 = aucune) : à baisser si on a le mal des transports
+  buzz: 0.4, // vibration rapide à haute vitesse, plus forte dans les cailloux et les racines (0 = aucune)
 };
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -65,17 +65,18 @@ export function createCameraRig(camera, bikeModel, sim) {
 
         // Les secousses viennent de la suspension qui travaille.
         const [wf, wr] = state.wheels;
-        const hit = Math.min(1, (Math.abs(wf.xdot) + Math.abs(wr.xdot)) * 0.18);
-        shakeLevel = Math.max(hit, shakeLevel - dt * 5);
-        const a = S.shake * shakeLevel * 0.018;
+        const hit = Math.min(1, (Math.abs(wf.xdot) + Math.abs(wr.xdot)) * 0.14);
+        shakeLevel = Math.max(hit, shakeLevel - dt * 6);
+        const a = S.shake * shakeLevel * 0.014;
         // À haute vitesse, le cintre et le casque vibrent : une vibration rapide et irrégulière, comme sur une caméra
-        // embarquée. Plus forte sur les cailloux et les racines, presque rien en l'air.
+        // embarquée. Plus forte sur les cailloux et les racines, presque rien en l'air. Les fréquences restent sous
+        // celle des images (au-delà, chaque image tomberait au hasard : la vue sauterait au lieu de vibrer).
         const surf = (wf.surface || wr.surface || {}).name;
         const rough = surf === 'cailloux' ? 1.9 : surf === 'racines' ? 1.5 : surf === 'gravier' ? 1.3 : surf === 'herbe' ? 0.8 : surf === 'roche' ? 0.7 : 1;
-        const bz = S.buzz * THREE.MathUtils.smoothstep(speed * 3.6, 20, 65) * rough * (state.contacts > 0 ? 1 : 0.15) * 0.0042;
-        const n1 = Math.sin(t * 157) + 0.6 * Math.sin(t * 211 + 1.3) + 0.3 * Math.sin(t * 97 + 0.4);
-        const n2 = Math.sin(t * 173 + 2.1) + 0.5 * Math.sin(t * 241);
-        euler.set(pitch + Math.sin(t * 61) * a + n1 * bz, yaw + Math.sin(t * 47 + 1) * a * 0.5 + n2 * bz * 0.5, roll + Math.sin(t * 53 + 2) * a * 0.4 + n2 * bz * 0.7);
+        const bz = S.buzz * THREE.MathUtils.smoothstep(speed * 3.6, 25, 70) * rough * (state.contacts > 0 ? 1 : 0.15) * 0.003;
+        const n1 = Math.sin(t * 71) + 0.6 * Math.sin(t * 103 + 1.3) + 0.3 * Math.sin(t * 47 + 0.4);
+        const n2 = Math.sin(t * 83 + 2.1) + 0.5 * Math.sin(t * 59);
+        euler.set(pitch + Math.sin(t * 29) * a + n1 * bz, yaw + Math.sin(t * 23 + 1) * a * 0.4 + n2 * bz * 0.4, roll + Math.sin(t * 26 + 2) * a * 0.3 + n2 * bz * 0.5);
         camera.quaternion.setFromEuler(euler);
         // En figure (vélo renversé ou qui tourne vite en l'air), la tête suit le vélo.
         up.set(0, 1, 0).applyQuaternion(q);

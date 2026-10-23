@@ -16,7 +16,8 @@ export const GEOMETRY = {
   steerPivot: { y: 1.015, z: -0.266 }, // un point de l'axe de direction (le haut de la douille)
   bottomBracket: { y: 0.35, z: 0.19 }, // le pédalier
   swingPivot: { y: 0.404, z: 0.199 }, // le pivot du bras oscillant (affichage)
-  grips: { y: 1.075, z: -0.23, halfWidth: 0.41 }, // les poignées (le cintre fait 82 cm)
+  // Les poignées, mesurées sur le modèle : leur axe, le milieu de la main (halfWidth), le bout du cintre (82 cm).
+  grips: { y: 1.058, z: -0.256, halfWidth: 0.345, barEnd: 0.41, radius: 0.019 },
   frontTravel: 0.2, // 200 mm de débattement à l'avant et à l'arrière
   rearTravel: 0.2,
 };

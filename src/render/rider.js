@@ -1,14 +1,18 @@
 // Le pilote, fait de formes simples mais articulé : bassin là où la physique met ses hanches (on voit le poids
 // passer devant ou derrière), bras jusqu'aux poignées (qui tournent avec le guidon), jambes jusqu'aux pédales,
-// casque intégral. Les articulations sont calculées par IK à deux segments.
+// casque intégral. Les articulations sont calculées par IK à deux segments. Les bras sont ceux, détaillés, de
+// arms.js (mains refermées sur les poignées) ; ceux en formes simples ne servent que le temps qu'ils chargent.
 // Repère : celui du vélo (voir src/sim/geometry.js).
 
 import * as THREE from 'three';
 import { GEOMETRY } from '../sim/geometry.js';
+import { createDetailedArms } from './arms.js';
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 const UP = new THREE.Vector3(0, 1, 0);
 const NEUTRAL_HIPS = new THREE.Vector3(0, GEOMETRY.bottomBracket.y + 0.72, GEOMETRY.bottomBracket.z - 0.11);
+// Les yeux en vue subjective, pilote au neutre : au-dessus et en retrait du cintre, comme une caméra sur le casque.
+const EYE = new THREE.Vector3(0, 1.575, 0.23);
 
 export const RIDER = {
   thigh: 0.45, shin: 0.46, upperArm: 0.31, forearm: 0.3, spine: 0.52, neck: 0.12,
@@ -30,7 +34,7 @@ export function solveTwoBone(A, T, l1, l2, pole, out) {
   return out.copy(A).addScaledVector(dir, l1 * cosA).addScaledVector(perp, l1 * sinA);
 }
 
-export function createRider() {
+export function createRider({ detailedArms = false } = {}) {
   const group = new THREE.Group();
   group.name = 'pilote';
   const jersey = new THREE.MeshStandardMaterial({ color: lin('#b3352b'), roughness: 0.85 });
@@ -101,6 +105,8 @@ export function createRider() {
   const grips = side.map((s) => new THREE.Vector3(s * GEOMETRY.grips.halfWidth, GEOMETRY.grips.y, GEOMETRY.grips.z));
   const BB = new THREE.Vector3(0, GEOMETRY.bottomBracket.y, GEOMETRY.bottomBracket.z);
   let crank = 0;
+  const arms = detailedArms ? createDetailedArms(group) : null;
+  const shoulderMid = v();
 
   return {
     group,
@@ -126,7 +132,7 @@ export function createRider() {
       head.rotation.set(0.15, 0, 0);
       // La caméra subjective : en retrait du cintre, comme une caméra embarquée (on voit le cintre et les gants),
       // et elle suit les déplacements du poids du pilote.
-      this.eye.set(0, GEOMETRY.grips.y + 0.5 + (hips.y - NEUTRAL_HIPS.y) * 0.8, GEOMETRY.grips.z + 0.46 + (hips.z - NEUTRAL_HIPS.z) * 0.9);
+      this.eye.set(0, EYE.y + (hips.y - NEUTRAL_HIPS.y) * 0.8, EYE.z + (hips.z - NEUTRAL_HIPS.z) * 0.9);
 
       // Le guidon tourne autour de l'axe de direction : les poignées aussi.
       qTmp.setFromAxisAngle(steerAxis, -st.steer);
@@ -160,6 +166,13 @@ export function createRider() {
       });
       // En vue subjective, on ne voit que les bras et les jambes (la caméra est dans le casque).
       head.visible = torso.visible = neck.visible = pelvis.visible = !firstPerson;
+      if (arms && arms.loaded) {
+        // Les épaules : sous la caméra en vue subjective (les bras partent des coins bas de l'image), sinon sur le buste.
+        if (firstPerson) shoulderMid.copy(this.eye).add(tmp.set(0, -0.3, 0.06));
+        else shoulderMid.copy(shoulders).add(tmp.set(0, -0.03, 0));
+        arms.update(shoulderMid, qTmp);
+        for (const P of parts) P.upperArm.visible = P.forearm.visible = P.hand.visible = P.cuff.visible = false;
+      }
     },
   };
 }
