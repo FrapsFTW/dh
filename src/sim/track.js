@@ -1,13 +1,10 @@
-// La piste : un tracé de descente façon Coupe du monde, dans une pente boisée.
+// La piste : un tracé de descente façon Coupe du monde, construit à partir d'une carte (maps.js).
 // Repère : x vers la droite, y vers le haut, la descente part vers -z (l'avant d'un objet three.js).
 // Tout est déterministe et sans navigateur : le jeu et les tests construisent exactement la même piste.
-//
-// Le déroulé, du haut vers le bas :
-//   cabane de départ et rampe · schuss · virages relevés · bosses à pomper · épingle · traversée de racines en dévers
-//   · pierrier dans la pente raide · drop · deux épingles · deux tables · road gap · virage final · saut d'arrivée.
 
 import { CatmullRomCurve3, Vector3 } from 'three';
 import { rng, vnoise, fbm, clamp, smoothstep } from './noise.js';
+import { MAPS } from './maps.js';
 
 export const DS = 0.25; // pas d'échantillonnage du tracé, en mètres
 export const RIBBON_HALF = 6; // demi-largeur du maillage fin de la piste
@@ -15,17 +12,7 @@ export const TRAIL_HALF = 2.4; // demi-largeur de la partie roulante
 export const TAPE_U = 3.4; // la rubalise, de chaque côté
 const RIBBON_DU = 0.4;
 const TERRAIN_STEP = 1.5;
-const SLOPE = 0.3; // pente générale de la montagne (30 %)
-const VALLEY_Z = 575; // en dessous de z = -575, le fond de vallée
 const G_TRACK = 9.81;
-
-// Points de passage du tracé (x, z), du haut vers le bas.
-const CONTROL = [
-  [0, 34], [0, 18], [0, -20], [3, -55], [16, -80], [40, -92], [72, -100], [96, -110], [104, -124], [96, -137],
-  [70, -146], [42, -154], [18, -168], [6, -190], [2, -222], [-2, -252], [-10, -272], [-32, -286], [-58, -294],
-  [-70, -306], [-62, -320], [-36, -330], [-8, -338], [8, -354], [12, -384], [8, -420], [0, -452], [-4, -482],
-  [4, -512], [20, -532], [26, -556], [26, -596], [26, -630],
-];
 
 // grip : multiplie le grip du pneu (1 = terre tassée).
 export const SURFACES = {
@@ -35,17 +22,18 @@ export const SURFACES = {
   racines: { name: 'racines', grip: 0.62, crr: 0.03 },
   bois: { name: 'bois', grip: 0.9, crr: 0.015 },
   herbe: { name: 'herbe', grip: 0.75, crr: 0.07 },
+  gravier: { name: 'gravier', grip: 0.86, crr: 0.03 }, // la piste au-dessus des arbres : terre et graviers roulants
+  roche: { name: 'roche', grip: 1.0, crr: 0.012 }, // une dalle de granit, sèche
 };
 
-export function createTrack(seed = 7) {
+/** mapId : une des cartes de maps.js ('foret' par défaut). */
+export function createTrack(seed = 7, mapId = 'foret') {
+  const map = MAPS[mapId] || MAPS.foret;
   const rand = rng(seed);
+  const CONTROL = map.control;
 
   // ---------- Le relief naturel ----------
-  // La pente s'adoucit en bas, dans le fond de vallée où se trouve l'aire d'arrivée.
-  const softplus = (v) => (v > 20 ? v : Math.log1p(Math.exp(v)));
-  const valley = (z) => SLOPE * z + (SLOPE - 0.05) * 8 * softplus(-(z + VALLEY_Z) / 8);
-  const natural = (x, z) =>
-    valley(z) + 5.0 * fbm(x / 80, z / 80, 4, seed) + 0.7 * fbm(x / 14, z / 14, 2, seed + 5) + 0.0005 * x * x;
+  const natural = map.relief(seed);
 
   // ---------- Le tracé, échantillonné tous les 25 cm ----------
   const curve = new CatmullRomCurve3(CONTROL.map(([x, z]) => new Vector3(x, 0, z)), false, 'centripetal');
@@ -92,33 +80,14 @@ export function createTrack(seed = 7) {
   const seg = (a, b, f) => cpS[a] + (cpS[b] - cpS[a]) * f;
 
   // ---------- Les modules de la piste ----------
-  const sStart = cpS[1] + 1; // la ligne de départ, au pied de la rampe
-  const sFinish = cpS[31] - 4;
-  const features = [
-    { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
-    { type: 'brakeBumps', a: cpS[3] - 18, b: cpS[3] + 2 },
-    { type: 'rollers', a: seg(5, 6, 0.1), b: seg(6, 7, 0.55), height: 0.45, wave: 8 },
-    { type: 'brakeBumps', a: seg(7, 8, 0.0), b: seg(7, 8, 0.6) },
-    { type: 'offCamber', a: seg(9, 10, 0.4), b: seg(11, 12, 0.3), bank: -0.13 },
-    { type: 'rocks', a: seg(13, 14, 0.3), b: seg(14, 15, 0.8) },
-    { type: 'jump', kind: 'drop', name: 'drop', a: seg(14, 15, 0.86), lipLen: 3, lipH: 0.35, knuckle: 0.3, clear: 1.1, speed: 7.5 },
-    { type: 'brakeBumps', a: seg(18, 19, 0.0), b: seg(18, 19, 0.7) },
-    { type: 'jump', kind: 'table', name: 'table', a: seg(23, 24, 0.55), lipLen: 5, lipH: 1.0, knuckle: 4.5, clear: 0.55, speed: 10.5 },
-    { type: 'jump', kind: 'table', name: 'table', a: seg(24, 25, 0.7), lipLen: 5, lipH: 1.1, knuckle: 5, clear: 0.6, speed: 11 },
-    { type: 'jump', kind: 'gap', name: 'road gap', a: seg(26, 27, 0.25), lipLen: 6, lipH: 1.3, knuckle: 7, clear: 0.7, dip: -1.3, speed: 12 },
-    { type: 'brakeBumps', a: seg(28, 29, 0.2), b: seg(28, 29, 0.85) },
-    // Le saut d'arrivée, le plus gros : une lèvre raide, plus d'une seconde en l'air et un plateau bas, de quoi tenter
-    // un backflip ou un 360 (la tête passe sous le vélo : il faut de la place). La réception, un peu moins raide que
-    // la trajectoire, pardonne d'arriver trop vite.
-    { type: 'jump', kind: 'table', name: 'saut d\'arrivée', a: cpS[29] + 8, lipLen: 5, lipH: 2.2, knuckle: 8, clear: 1.6, speed: 10, touchLen: 3, lineLen: 4, landFlatten: 0.45, runout: 14 },
-    { type: 'arena', a: seg(30, 31, 0.75), b: L },
-  ];
+  const layout = map.layout({ cpS, seg, L });
+  const { sStart, sFinish, features, gates, speedTrap, spawnS } = layout;
   for (const f of features) if (f.type === 'jump') f.b = f.a + 40; // provisoire : la vraie longueur vient du profil
   const featureOf = (type) => features.filter((f) => f.type === type);
 
-  // Les racines : des bourrelets en travers, un peu en biais, dans la traversée en dévers et sous les sapins.
+  // Les racines : des bourrelets en travers, un peu en biais.
   const roots = [];
-  for (const [a, b] of [[seg(9, 10, 0.3), seg(12, 13, 0.2)], [seg(19, 20, 0.6), seg(21, 22, 0.5)]]) {
+  for (const [a, b] of layout.roots || []) {
     for (let s = a + 2; s < b - 2; s += 1.2 + rand() * 3.5) {
       roots.push({ s, skew: (rand() - 0.5) * 1.1, height: 0.05 + rand() * 0.05, r: 0.06 + rand() * 0.05, u0: -3 + rand() * 1.5, u1: 1.5 + rand() * 1.5 });
     }
@@ -132,7 +101,8 @@ export function createTrack(seed = 7) {
     }
   }
   rocks.sort((a, b) => a.s - b.s);
-  const rocksRange = featureOf('rocks')[0];
+  const rockRanges = featureOf('rocks');
+  const inRocks = (s, margin = 0) => rockRanges.find((f) => s > f.a - margin && s < f.b + margin);
 
   // Inclinaison des virages : relevés selon la courbure, sauf en dévers.
   const BANK = new Float32Array(n);
@@ -162,6 +132,20 @@ export function createTrack(seed = 7) {
   // Écart entre la piste et le relief naturel : on le reporte sur les côtés pour que la pente suive la piste.
   const D = new Float32Array(n);
   for (let i = 0; i < n; i++) D[i] = C[i] - natural(X[i], Z[i]);
+  // Sous un pont, le relief ne suit pas la piste : le ravin reste ouvert. DF est l'écart reporté sur les côtés.
+  const bridges = featureOf('bridge');
+  const DF = D.slice();
+  for (const f of bridges) {
+    for (let i = Math.max(0, Math.floor((f.a - 8) / DS)); i <= Math.min(n - 1, Math.ceil((f.b + 8) / DS)); i++) {
+      const s = i * DS;
+      DF[i] *= 1 - smoothstep(f.a - 7, f.a - 1, s) * (1 - smoothstep(f.b + 1, f.b + 7, s));
+    }
+  }
+  /** 1 sur le tablier d'un pont, 0 ailleurs. */
+  const onBridge = (s) => {
+    for (const f of bridges) if (s > f.a - 1 && s < f.b + 1) return smoothstep(f.a - 1, f.a + 1, s) * (1 - smoothstep(f.b - 1, f.b + 1, s));
+    return 0;
+  };
 
   // ---------- Les sauts, dessinés d'après la trajectoire ----------
   // On calcule la trajectoire d'un pilote qui décolle à la vitesse prévue. Il passe f.clear mètres au-dessus de l'arête
@@ -170,6 +154,15 @@ export function createTrack(seed = 7) {
   const baseAt = (s) => {
     const fi = clamp(s / DS, 0, n - 1.0001), i = Math.floor(fi), t = fi - i;
     return C[i] + (C[i + 1] - C[i]) * t;
+  };
+  // Le raccord ne doit pas écraser le pilote : sa courbure (le changement de pente par mètre) reste sous 0,16. Dans une
+  // pente raide, la réception d'un drop finit bien en dessous de la pente, et un raccord trop court devrait remonter
+  // pour la rejoindre : on l'allonge.
+  const runoutLength = (f, end) => {
+    const curv = (Lr) => Math.max(Math.abs((-6 * end.h) / (Lr * Lr) - (4 * end.m) / Lr), Math.abs((6 * end.h) / (Lr * Lr) + (2 * end.m) / Lr));
+    let Lr = f.runout ?? 18;
+    while (curv(Lr) > 0.16 && Lr < 60) Lr += 1;
+    return Lr;
   };
   for (const f of features) {
     if (f.type !== 'jump') continue;
@@ -189,7 +182,7 @@ export function createTrack(seed = 7) {
     const yK = landing(f.knuckle);
     const prof = [];
     let end = null;
-    for (let d = 0; d <= 100; d += DS) {
+    for (let d = 0; d <= 160; d += DS) {
       const sd = f.a + d;
       let h;
       if (d < f.lipLen) {
@@ -206,12 +199,16 @@ export function createTrack(seed = 7) {
           y = x < f.knuckle / 2 ? yLip + (road - yLip) * smoothstep(0, 1.4, x) : road + (yK - road) * smoothstep(f.knuckle - 1.6, f.knuckle, x);
         }
         h = y - baseAt(sd);
-        // Au bout de la réception, on revient à la pente en douceur.
-        if (x > touch + lineLen) end = { d, h, m: (h - prof[prof.length - 1]) / DS };
+        // Au bout de la réception, on revient à la pente en douceur (f.dig : au plus tard quand la réception passe à
+        // f.dig mètres sous la pente, pour ne pas creuser une fosse).
+        if (x > touch + lineLen || (f.dig != null && x > touch && h < -f.dig)) {
+          end = { d, h, m: (h - prof[prof.length - 1]) / DS };
+          end.Lr = runoutLength(f, end);
+        }
       } else {
         // Le raccord part avec la pente de la réception (pas de cassure) et rejoint la pente naturelle sur 18 m :
         // à 13 m/s, un changement de pente trop court écrase la suspension.
-        const Lr = f.runout ?? 18, t = Math.min(1, (d - end.d) / Lr);
+        const Lr = end.Lr, t = Math.min(1, (d - end.d) / Lr);
         h = end.h * (2 * t ** 3 - 3 * t * t + 1) + end.m * Lr * (t ** 3 - 2 * t * t + t);
         if (d > end.d + Lr) break;
       }
@@ -282,7 +279,7 @@ export function createTrack(seed = 7) {
     const lerp = (A) => A[i] + (A[i + 1] - A[i]) * t;
     let tx = lerp(TX), tz = lerp(TZ);
     const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    return { x: lerp(X), z: lerp(Z), tx, tz, rx: -tz, rz: tx, c: lerp(C), bank: lerp(BANK), k: lerp(K), d: lerp(D) };
+    return { x: lerp(X), z: lerp(Z), tx, tz, rx: -tz, rz: tx, c: lerp(C), bank: lerp(BANK), k: lerp(K), d: lerp(DF) };
   }
 
   function featureHeight(s, u) {
@@ -303,7 +300,8 @@ export function createTrack(seed = 7) {
       const dd = s - r.s - r.skew * u;
       if (dd > -0.4 && dd < 0.4 && u > r.u0 && u < r.u1) bumps = Math.max(bumps, r.height * Math.exp(-((dd / r.r) ** 2)));
     }
-    if (rocksRange && s > rocksRange.a - 1 && s < rocksRange.b + 1) {
+    const rocksRange = inRocks(s, 1);
+    if (rocksRange) {
       const lo = lowerBound(rocks, s - 1);
       for (let k = lo; k < rocks.length && rocks[k].s < s + 1; k++) {
         const rk = rocks[k];
@@ -325,7 +323,9 @@ export function createTrack(seed = 7) {
     // Le profil en travers : légèrement creusé au milieu (la trace), relevé dans les virages.
     const rut = -0.05 * Math.exp(-((u / 1.1) ** 2));
     const yt = f.c - uc * Math.tan(f.bank) + rut + featureHeight(s, u);
-    const w = smoothstep(2.9, 4.6, au);
+    // Sur un pont, le bord est franc : au-delà du tablier, c'est le ravin.
+    const bw = bridges.length ? onBridge(s) : 0;
+    const w = smoothstep(2.9 - bw, 4.6 - 2 * bw, au);
     if (w <= 0) return yt;
     const xx = f.x + u * f.rx, zz = f.z + u * f.rz;
     const hn = terrainHeight(xx, zz, f.d, au) + 0.02;
@@ -337,30 +337,40 @@ export function createTrack(seed = 7) {
     return natural(x, z) + d * (1 - smoothstep(4, 26, dist));
   }
 
+  // Le sol de la piste par tronçons : dalles et ponts sur toute la largeur, graviers en altitude…
+  const zones = [
+    ...bridges.map((f) => ({ a: f.a, b: f.b, surface: SURFACES.bois, whole: true })),
+    ...featureOf('slab').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.roche, whole: true })),
+    ...(layout.surfaces || []).map((z) => ({ a: z.a, b: z.b, surface: SURFACES[z.surface], edge: z.edge && SURFACES[z.edge] })),
+  ];
+  const zoneAt = (s) => zones.find((z) => s >= z.a && s <= z.b) || null;
+
   function surfaceAt(x, z) {
     const p = nearest(x, z, null, 0, 1);
     if (!p.inside || p.dist > TRAIL_HALF + 0.9) return SURFACES.herbe;
     const s = p.s;
     if (s < sStart - 0.5 && s > cpS[0]) return SURFACES.bois;
-    if (rocksRange && s > rocksRange.a && s < rocksRange.b && p.dist < TRAIL_HALF + 0.3) return SURFACES.cailloux;
+    if (inRocks(s) && p.dist < TRAIL_HALF + 0.3) return SURFACES.cailloux;
     for (const r of roots) {
       const dd = s - r.s - r.skew * p.u;
       if (dd > -r.r * 1.2 && dd < r.r * 1.2 && p.u > r.u0 && p.u < r.u1) return SURFACES.racines;
     }
-    if (p.dist > TRAIL_HALF - 0.3) return SURFACES.poussiere; // les bords de la trace, plus meubles
-    return SURFACES.terre;
+    const zone = zoneAt(s);
+    if (zone && zone.whole) return zone.surface;
+    if (p.dist > TRAIL_HALF - 0.3) return zone ? zone.edge || zone.surface : SURFACES.poussiere; // les bords de la trace, plus meubles
+    return zone ? zone.surface : SURFACES.terre;
   }
 
-  // ---------- Les portes ----------
-  const gates = [
-    { kind: 'depart', s: sStart },
-    { kind: 'point', s: seg(9, 10, 0.2) },
-    { kind: 'point', s: seg(17, 18, 0.3) },
-    { kind: 'point', s: seg(25, 26, 0.3) },
-    { kind: 'arrivee', s: sFinish },
-  ];
-  const speedTrap = cpS[29] + 2; // juste avant le saut d'arrivée
-  const spawnS = cpS[0] + 3; // dans la cabane de départ
+  // ---------- Les points où l'on repart après une chute ----------
+  // Les portes, plus un point tous les 150 m environ, jamais sur un saut, dans un pierrier ou sur un pont.
+  const busy = (s) => features.some((f) => (f.type === 'jump' || f.type === 'rocks' || f.type === 'bridge' || f.type === 'slab') && s > f.a - 6 && s < f.b + 2);
+  const respawns = gates.slice(0, -1).map((g) => g.s);
+  for (let s = sStart + 150; s < sFinish - 60; s += 150) {
+    let p = s;
+    while (busy(p) && p < s + 60) p += 2;
+    if (!busy(p) && respawns.every((r) => Math.abs(r - p) > 40)) respawns.push(p);
+  }
+  respawns.sort((a, b) => a - b);
 
   // ---------- Les limites et les arbres ----------
   let xmin = Infinity, xmax = -Infinity, zmin = Infinity, zmax = -Infinity;
@@ -372,9 +382,12 @@ export function createTrack(seed = 7) {
   const startCenter = sample(cpS[0] + 6);
 
   const trees = [];
+  const treeline = map.trees.treeline ?? null;
+  // Plus haut, rien que des sapins ; en bas des montagnes, plus de feuillus.
+  const sapinShare = (y) => (treeline === null ? 0.82 : 0.6 + 0.4 * smoothstep(treeline - 160, treeline - 40, y));
   const TREE_CELL = 4;
   const treeGrid = new Map();
-  for (let k = 0; k < 26000; k++) {
+  for (let k = 0; k < map.trees.tries; k++) {
     const x = bounds.xmin + rand() * (bounds.xmax - bounds.xmin);
     const z = bounds.zmin + rand() * (bounds.zmax - bounds.zmin);
     const p = nearest(x, z, null, 0, 5);
@@ -387,9 +400,18 @@ export function createTrack(seed = 7) {
     );
     let prob = d < 5.4 ? 0 : d < 10 ? 0.6 : d < 30 ? 0.3 : 0.12;
     prob *= (1 - clearing) * (1 - open);
+    // En montagne, la forêt s'arrête vers une altitude (la limite est irrégulière) ; juste en dessous, les arbres
+    // rapetissent, au-dessus il n'en reste que quelques-uns, isolés.
+    const ground = terrainHeight(x, z, d < 30 ? sample(p.s).d : 0, d);
+    let stunt = 0;
+    if (treeline !== null && prob > 0) {
+      const yt = treeline + 16 * fbm(x / 70, z / 70, 2, seed + 41);
+      prob *= Math.max(1 - smoothstep(yt - 12, yt + 8, ground), 0.05 * (1 - smoothstep(yt + 8, yt + 50, ground)));
+      stunt = smoothstep(yt - 35, yt + 10, ground);
+    }
     if (rand() > prob) continue;
-    const h = 9 + rand() * 13, r = 0.18 + rand() * 0.22;
-    const t = { x, z, y: terrainHeight(x, z, d < 30 ? sample(p.s).d : 0, d) - 0.15, h, r, hue: rand(), kind: rand() < 0.82 ? 'sapin' : 'feuillu' };
+    const h = (9 + rand() * 13) * (1 - 0.55 * stunt), r = (0.18 + rand() * 0.22) * (1 - 0.4 * stunt);
+    const t = { x, z, y: ground - 0.15, h, r, hue: rand(), kind: rand() < sapinShare(ground) ? 'sapin' : 'feuillu' };
     trees.push(t);
     const kk = key(Math.floor(x / TREE_CELL), Math.floor(z / TREE_CELL));
     let arr = treeGrid.get(kk);
@@ -468,9 +490,9 @@ export function createTrack(seed = 7) {
   }
 
   return {
-    seed, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
+    seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
     natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight,
-    features, roots, rocks, gates, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
+    features, roots, rocks, bridges, onBridge, gates, respawns, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
     bounds, trees, treeNear, buildTerrain, buildRibbon,
   };
 }

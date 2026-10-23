@@ -24,7 +24,8 @@
     .modes { display: flex; gap: 8px; margin: 4px 0 6px; flex-wrap: wrap; }
     .modes button { font: inherit; font-weight: 800; font-size: 15px; color: var(--fg); background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); padding: 7px 14px; cursor: pointer; }
     .modes button.on { background: var(--accent); border-color: var(--accent); }
-    #modeBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
+    #modeBlurb, #mapBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
+    [data-map].on { background: #1d5fb8 !important; border-color: #1d5fb8 !important; }
     #splitBox { position: absolute; top: 70px; left: 18px; display: flex; flex-direction: column; gap: 4px; }
     .split { display: flex; font-size: 15px; font-weight: 700; background: var(--panel); }
     .split .n { background: rgba(255,255,255,.12); padding: 4px 8px; min-width: 64px; }
@@ -105,7 +106,9 @@
   <div id="help" class="screen hidden">
     <div class="card">
       <h1>Downhill</h1>
-      <p>Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, quatre temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
+      <p>Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, des temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
+      <div class="modes"><button data-map="foret">La Forêt</button><button data-map="alpes">La Grande Combe</button></div>
+      <div id="mapBlurb"></div>
       <div class="modes"><button data-mode="normal">Normal</button><button data-mode="ultra">Ultra-réaliste</button></div>
       <div id="modeBlurb"></div>
       <table>

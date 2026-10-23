@@ -1,6 +1,7 @@
 // Le chrono : départ, points de passage dans l'ordre, radar de vitesse, arrivée.
 // Comme en course : il faut rester entre les rubalises. Sortir du balisage plus d'un instant renvoie au dernier point
-// de passage, et le chrono continue de tourner.
+// de passage, et le chrono continue de tourner. On repart d'une porte ou d'un des points de reprise (tous les 150 m
+// environ) : jamais au-delà d'une porte qu'on n'a pas encore passée.
 
 import { TAPE_U } from './track.js';
 
@@ -28,6 +29,7 @@ export class Race {
     this.trapSpeed = null;
     this.topSpeed = 0;
     this.trace = []; // positions toutes les 0,1 s, pour le fantôme
+    this.reached = this.track.spawnS; // le plus loin qu'on soit allé en restant sur la piste
   }
 
   update(dt, pos, speed, crashed, pose) {
@@ -44,6 +46,7 @@ export class Race {
       if (this.trapSpeed === null && prevS < this.track.speedTrap && this.s >= this.track.speedTrap) this.trapSpeed = speed;
     }
     if (crashed || this.state === 'arrivee') return;
+    if (this.state === 'course' && Math.abs(this.u) < TAPE_U + 0.5 && this.s - prevS < 3) this.reached = Math.max(this.reached, this.s);
     // Le balisage.
     if (this.state === 'course' && Math.abs(this.u) > TAPE_U + 0.5) this.outside += dt;
     else this.outside = Math.max(0, this.outside - dt * 2);
@@ -65,11 +68,15 @@ export class Race {
   /** Où repartir après une chute : juste après la dernière porte passée, ou dans la cabane de départ. */
   respawnS() {
     if (this.next === 0) return this.track.spawnS;
-    return this.gates[this.next - 1].s + 1;
+    const last = this.gates[this.next - 1].s, nextGate = this.gates[this.next] ? this.gates[this.next].s : Infinity;
+    let s = last;
+    for (const p of this.track.respawns || []) if (p > s && p < nextGate && p <= this.reached - 3) s = p;
+    return s + 1;
   }
 
   onRespawn() {
     this.s = this.respawnS();
+    this.reached = this.s;
     this.missed = false;
     this.out = false;
     this.outside = 0;

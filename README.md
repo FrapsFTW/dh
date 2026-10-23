@@ -1,7 +1,8 @@
 # Downhill
 
 Une manche de descente VTT chronométrée, comme en Coupe du monde, dans le navigateur. Le vélo est entièrement
-simulé : on dose les freins, le poids et l'inclinaison, et c'est le grip des pneus qui décide.
+simulé : on dose les freins, le poids et l'inclinaison, et c'est le grip des pneus qui décide. Deux pistes : La Forêt
+(884 m) et La Grande Combe (2,3 km de haute montagne).
 
 ## Lancer le jeu
 
@@ -26,11 +27,13 @@ Puis ouvrir http://localhost:5180. Une manette est fortement conseillée : tout 
 | Vue extérieure | Select | C |
 | Fantôme du record | | F |
 | Changer de mode (avant le départ) | LB | M |
+| Changer de piste (avant le départ) | sur l'écran d'aide ou dans les réglages | |
 | Réglages de la physique · pilote auto · aide | | G · P · H |
 
-Paramètres d'adresse utiles : `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
+Paramètres d'adresse utiles : `?carte=alpes` (La Grande Combe) ou `?carte=foret`, `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
 pilote auto tente la figure au saut d'arrivée), `?cam=chase` (vue extérieure), `?seed=12` (une autre forêt),
-`?qualite=basse` (ombres et antialiasing allégés, pour les petites cartes graphiques). La résolution s'adapte aussi
+`?qualite=basse` (ombres, antialiasing et forêt allégés, pour les petites cartes graphiques), `?depart=600&vitesse=13`
+(lancé à 600 m de la cabane). La résolution s'adapte aussi
 toute seule si les images ralentissent.
 
 ## Deux modes
@@ -48,7 +51,7 @@ pilote et pardonne un peu plus. Le mode **Ultra-réaliste** garde les réglages 
 | Inclinaison, bascule avant, bascule arrière tolérées | 80°, 62°, 75° | 72°, 54°, 66° |
 | Hors des rubalises | 3 s tolérées | 1,5 s |
 
-Chaque mode a son record et son fantôme. On choisit le mode sur l'écran d'aide, avec M ou LB avant le départ, ou dans
+Chaque piste a, dans chaque mode, son record et son fantôme. On choisit le mode sur l'écran d'aide, avec M ou LB avant le départ, ou dans
 les réglages (G).
 
 ## Les figures
@@ -68,14 +71,29 @@ pour que la tête passe. Les tables sont trop courtes.
 ## Une manche
 
 Comme en course : on part de la cabane après un compte à rebours (trois bips, puis le long), le chrono démarre au
-faisceau, quatre temps intermédiaires s'affichent en vert ou en rouge par rapport au record, un radar mesure la
-vitesse avant le saut final. Il faut rester entre les rubalises : plus d'une seconde et demie dehors renvoie au
-dernier point de passage, et le chrono continue. Le meilleur temps est enregistré dans le navigateur avec la
+faisceau, les temps intermédiaires s'affichent en vert ou en rouge par rapport au record, un radar mesure la
+vitesse avant le saut final. Il faut rester entre les rubalises : plus d'une seconde et demie dehors (trois en Normal)
+renvoie en arrière, et le chrono continue. Après une chute ou une sortie, on repart du dernier point de reprise passé
+(il y en a un tous les 150 m environ, jamais sur un saut, et jamais au-delà d'une porte qu'on n'a pas passée). Le meilleur temps est enregistré dans le navigateur avec la
 trajectoire complète : on peut ensuite courir contre son fantôme (touche F).
 
-La piste (884 m, 181 m de dénivelé) : rampe de départ, schuss, virages relevés, bosses à pomper, épingle, traversée
-de racines en dévers, pierrier dans la pente raide, drop, deux épingles, deux tables, road gap au-dessus d'une route
-forestière, virage final et grand saut d'arrivée.
+## Les pistes
+
+**La Forêt** (884 m, 181 m de dénivelé, environ 1 min 20) : rampe de départ, schuss, virages relevés, bosses à
+pomper, épingle, traversée de racines en dévers, pierrier dans la pente raide, drop, deux épingles, deux tables, road
+gap au-dessus d'une route forestière, virage final et grand saut d'arrivée.
+
+**La Grande Combe** (2,3 km, 450 m de dénivelé, plus de 3 min 30, cinq intermédiaires). Une longue descente de
+montagne en trois tiers, comme à Fort William (2,8 km, 550 m de dénivelé) : un haut découvert et caillouteux, un
+milieu en forêt, un bas très rapide.
+
+- En haut, au-dessus des arbres : la cabane sur une crête, une piste de graviers (moins de grip), la dalle de granit
+  (plus de grip), le grand pierrier à 40 % et son drop de sortie, puis quatre lacets dans la face, avec des bosses à
+  pomper et une table.
+- Au milieu, la forêt : le toboggan, droit dans la pente au milieu des racines, la traversée en dévers vers le pont du
+  torrent (on entend l'eau), une grande épingle, le pierrier du bois, la marche.
+- En bas, l'autoroute : un bike park, la partie la plus rapide, une table, un step-down, un road gap, de grands
+  virages relevés, des bosses, et le saut d'arrivée.
 
 ## La physique
 
@@ -105,17 +123,32 @@ Tous les réglages sont modifiables en jeu (touche G).
 
 ## La piste
 
-Générée par `src/sim/track.js`, identique à chaque lancement (même graine). Les sauts sont dessinés d'après la
-trajectoire : la réception suit la parabole d'un pilote à la vitesse prévue, on se pose en douceur entre environ
-−30 % et +20 % de cette vitesse. Le relief autour suit la piste, et l'aire d'arrivée est au fond de la vallée.
+Chaque piste est décrite dans `src/sim/maps.js` : ses points de passage, son relief, ses modules (sauts, pierriers,
+racines, dévers, dalle, pont…), ses portes, sa forêt. `src/sim/track.js` en fait le tracé, le sol et la physique,
+identiques à chaque lancement (même graine). Les sauts sont dessinés d'après la trajectoire : la réception suit la
+parabole d'un pilote à la vitesse prévue, on se pose en douceur entre environ −15 % et +15 % de cette vitesse au
+moins. Le raccord après la réception est allongé tant qu'il écraserait le pilote (dans une pente raide, la
+réception d'un drop finit bien sous la pente). Le relief autour suit la piste, sauf sous un pont, et l'aire
+d'arrivée est au fond de la vallée.
+
+Pour dessiner une piste : `node tools/plan.mjs alpes` en fait le plan vu de dessus (`shots/plan-alpes.png`, relief
+ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
 
 ## L'affichage
 
 - `src/render/ground.js` : le sol et la piste, un seul matériau procédural (terre tassée, trace, bords poussiéreux,
-  traces de freinage, herbe, sous-bois, roche).
-- `src/render/vegetation.js` : sapins, feuillus, herbes, fougères, rochers, troncs (en instances, par zones).
-- `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, public, panneaux.
-- `src/render/sky.js` : ciel, nuages, montagnes à l'horizon.
+  traces de freinage, herbe, sous-bois, roche ; en altitude, alpage, éboulis, graviers et granit). En montagne, un
+  relief lointain jusqu'à l'horizon, enneigé sur les sommets.
+- `src/render/trees.js` : la forêt. Sapins et feuillus générés par EZ-Tree au lancement, dessinés en instances ;
+  le vrai modèle près du pilote, un imposteur (sa photo sur deux plans croisés) au loin, et des milliers
+  d'imposteurs sur le relief lointain. En montagne, les arbres s'arrêtent à une altitude, en rapetissant.
+- `src/render/vegetation.js` : herbes, fleurs, fougères, rochers, troncs couchés.
+- `src/render/post.js` et `src/render/speedFx.js` : la sensation de vitesse, de 25 à 55 km/h : flou radial et
+  légère aberration chromatique sur les bords, vision en tunnel, poussière qui file. La caméra vibre à haute vitesse
+  (plus dans les cailloux) et le champ de vision s'ouvre ; le vent gronde dans le casque. Tout se règle avec G.
+- `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, public, panneaux,
+  le pont et le torrent.
+- `src/render/sky.js` : ciel, nuages, montagnes à l'horizon (en haute montagne : sommets enneigés, couloirs, brume).
 - `src/render/bikeModel.js` et `src/render/rider.js` : le vélo (le modèle 3D fourni) et le pilote articulé.
 - `src/audio.js` : le son, entièrement synthétisé.
 
@@ -135,7 +168,8 @@ chaque pièce et braque la direction (captures dans `shots/`).
 ## Vérifier
 
 ```sh
-npm test         # la piste et la physique : freinages, virages, poids, bunny-hop, sauts, figures, les deux modes
+npm test         # les pistes et la physique : freinages, virages, poids, bunny-hop, sauts, figures, les deux modes,
+                 # et le pilote auto qui descend chaque piste sans tomber
 npm run shots    # lance le jeu dans Edge sans écran et enregistre des captures dans shots/
 npm run trace    # le pilote auto descend la piste et imprime son état
 ```
@@ -145,3 +179,5 @@ npm run trace    # le pilote auto descend la piste et imprime son état
 - [three.js](https://threejs.org) (MIT), [Rapier](https://rapier.rs) (Apache 2.0), [lil-gui](https://lil-gui.georgealways.com) (MIT),
   [glTF Transform](https://gltf-transform.dev) et [meshoptimizer](https://github.com/zeux/meshoptimizer) (MIT).
 - La physique du vélo s'inspire de [Terrain Rider](https://terrainrider.com).
+- Les arbres : [EZ-Tree](https://github.com/dgreenheck/ez-tree) de Daniel Greenheck (MIT), écorces CC0 de TextureCan
+  et Poly Haven.

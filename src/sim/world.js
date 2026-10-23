@@ -15,9 +15,12 @@ export function initPhysics() {
   return ready;
 }
 
-/** mode : 'normal' ou 'ultra' (voir modes.js). Sans mode, les réglages de Terrain Rider (ceux de l'Ultra-réaliste). */
-export function createSim({ seed = 7, mode = null, params = mode ? modeParams(mode) : { ...DEFAULT_PARAMS } } = {}) {
-  const track = createTrack(seed);
+/**
+ * mode : 'normal' ou 'ultra' (voir modes.js). Sans mode, les réglages de Terrain Rider (ceux de l'Ultra-réaliste).
+ * map : la carte (voir maps.js), 'foret' par défaut.
+ */
+export function createSim({ seed = 7, mode = null, map = 'foret', params = mode ? modeParams(mode) : { ...DEFAULT_PARAMS } } = {}) {
+  const track = createTrack(seed, map);
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = STEP;
 

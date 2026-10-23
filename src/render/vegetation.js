@@ -1,5 +1,6 @@
-// La forêt et le sous-bois : sapins, feuillus, herbes, fougères, rochers, troncs couchés.
-// Tout est en instances, regroupées par zones de 80 m : ce qui est hors du champ n'est pas dessiné.
+// Le sous-bois : herbes, fleurs, fougères, rochers, troncs couchés (les arbres sont dans trees.js).
+// Tout est en instances, regroupées par zones de 80 m : ce qui est hors du champ n'est pas dessiné, les herbes et les
+// fleurs pas au-delà de 220 m. En montagne, au-dessus des arbres, des blocs plus gros et plus nombreux.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -10,81 +11,6 @@ const TILE = 80;
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
 // ---------- Les géométries ----------
-
-/** Un sapin de hauteur 1 (le feuillage seul) : des étages de branches dentelées qui retombent. */
-function spruceGeometry(seed) {
-  const rand = rng(seed);
-  const pos = [], col = [], nrm = [];
-  const dark = lin('#2c4a2e'), mid = lin('#406a3c'), tip = lin('#6f9650');
-  const tiers = 9;
-  for (let k = 0; k < tiers; k++) {
-    const f = k / (tiers - 1);
-    const yb = 0.1 + f * 0.8; // bas de l'étage
-    const yt = Math.min(1, yb + 0.2 - f * 0.05);
-    const R = Math.pow(1 - f * 0.92, 1.1) * (0.92 + rand() * 0.16);
-    const n = 13;
-    const rot = rand() * Math.PI * 2;
-    const ring = [];
-    for (let i = 0; i < n; i++) {
-      const a = rot + (i / n) * Math.PI * 2;
-      const r = R * (i % 2 ? 0.66 : 1) * (0.9 + rand() * 0.2);
-      ring.push([Math.cos(a) * r, yb - (i % 2 ? 0 : 0.035 + 0.04 * R), Math.sin(a) * r]);
-    }
-    const apex = [0, yt, 0], under = [0, yb + 0.03, 0];
-    const cTip = mid.clone().lerp(tip, 0.4 + f * 0.5), cIn = dark.clone().lerp(mid, f * 0.5);
-    for (let i = 0; i < n; i++) {
-      const a = ring[i], b = ring[(i + 1) % n];
-      // Dessus de l'étage.
-      for (const [p, c, up] of [[apex, cIn, 1], [b, cTip, 0.45], [a, cTip, 0.45]]) {
-        pos.push(...p); col.push(c.r, c.g, c.b);
-        const l = Math.hypot(p[0], p[2]) || 1;
-        const v = new THREE.Vector3((p[0] / l) * (1 - up), up + 0.35, (p[2] / l) * (1 - up)).normalize();
-        nrm.push(v.x, v.y, v.z);
-      }
-      // Dessous (vu en passant sous les branches basses).
-      for (const [p, c] of [[under, dark], [a, mid], [b, mid]]) {
-        pos.push(...p); col.push(c.r * 0.7, c.g * 0.7, c.b * 0.7);
-        const l = Math.hypot(p[0], p[2]) || 1;
-        nrm.push((p[0] / l) * 0.6, -0.2, (p[2] / l) * 0.6);
-      }
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  return g;
-}
-
-/** La couronne d'un feuillu, de hauteur 1 : des boules bosselées. */
-function crownGeometry(seed) {
-  const rand = rng(seed);
-  const parts = [];
-  const leaf = lin('#6f9a45'), leafDark = lin('#41632c');
-  for (let k = 0; k < 6; k++) {
-    const g = new THREE.IcosahedronGeometry(0.22 + rand() * 0.1, 1);
-    const p = g.attributes.position, c = [];
-    const cx = (rand() - 0.5) * 0.35, cy = 0.55 + rand() * 0.35, cz = (rand() - 0.5) * 0.35;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-      const n = 1 + 0.18 * Math.sin(x * 17 + seed) * Math.sin(y * 13 + k) * Math.sin(z * 11);
-      p.setXYZ(i, cx + x * n, cy + y * n * 0.85, cz + z * n);
-      const t = (y + 0.3) / 0.6;
-      const cc = leafDark.clone().lerp(leaf, Math.max(0, Math.min(1, t)));
-      c.push(cc.r, cc.g, cc.b);
-    }
-    g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
-    g.computeVertexNormals();
-    parts.push(g);
-  }
-  return mergeGeometries(parts);
-}
-
-function trunkGeometry() {
-  const g = new THREE.CylinderGeometry(0.55, 1, 1, 7, 1, true);
-  g.translate(0, 0.5, 0);
-  return g;
-}
 
 /** Une touffe : trois cartes croisées, normales vers le haut (éclairage doux, comme de l'herbe). */
 function tuftGeometry() {
@@ -218,11 +144,12 @@ class Tiles {
   add(name, x, z, matrix, color) {
     const k = `${name}|${Math.floor(x / TILE)}|${Math.floor(z / TILE)}`;
     let t = this.map.get(k);
-    if (!t) this.map.set(k, (t = { name, matrices: [], colors: [] }));
+    if (!t) this.map.set(k, (t = { name, matrices: [], colors: [], cx: (Math.floor(x / TILE) + 0.5) * TILE, cz: (Math.floor(z / TILE) + 0.5) * TILE }));
     t.matrices.push(matrix.clone());
     if (color) t.colors.push(color.clone());
   }
   build(group, kinds) {
+    this.meshes = [];
     for (const t of this.map.values()) {
       const kind = kinds[t.name];
       const mesh = new THREE.InstancedMesh(kind.geometry, kind.material, t.matrices.length);
@@ -232,6 +159,7 @@ class Tiles {
       mesh.receiveShadow = !!kind.receiveShadow;
       mesh.computeBoundingSphere();
       group.add(mesh);
+      this.meshes.push({ mesh, cx: t.cx, cz: t.cz, near: !!kind.near });
     }
   }
 }
@@ -245,46 +173,23 @@ export function createVegetation(track, forestAt) {
   const up = new THREE.Vector3(0, 1, 0);
 
   const bark = new THREE.MeshStandardMaterial({ color: lin('#4a3829'), roughness: 1 });
-  const needles = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
-  const leaves = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
-  const kinds = {
-    trunk: { geometry: trunkGeometry(), material: bark, castShadow: true },
-    spruceA: { geometry: spruceGeometry(1), material: needles, castShadow: true },
-    spruceB: { geometry: spruceGeometry(2), material: needles, castShadow: true },
-    crown: { geometry: crownGeometry(3), material: leaves, castShadow: true },
-  };
-
-  // ----- Les arbres -----
-  for (const t of track.trees) {
-    const lean = (rand() - 0.5) * 0.06;
-    q.setFromAxisAngle(up, t.hue * 40).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), lean));
-    if (t.kind === 'sapin') {
-      tiles.add('trunk', t.x, t.z, m4.compose(p.set(t.x, t.y, t.z), q, s.set(t.r, t.h * 0.55, t.r)));
-      const w = t.h * (0.2 + t.hue * 0.07);
-      const v = 0.8 + rand() * 0.45; // teinte : certains plus bleutés, d'autres plus jaunes
-      col.setRGB(v * (0.9 + t.hue * 0.2), v, v * (1.05 - t.hue * 0.2));
-      tiles.add(t.hue < 0.5 ? 'spruceA' : 'spruceB', t.x, t.z, m4.compose(p.set(t.x, t.y + t.h * 0.03, t.z), q, s.set(w, t.h, w)), col);
-    } else {
-      const h = t.h * 0.75;
-      tiles.add('trunk', t.x, t.z, m4.compose(p.set(t.x, t.y, t.z), q, s.set(t.r * 0.8, h * 0.62, t.r * 0.8)));
-      const v = 0.8 + rand() * 0.4;
-      col.setRGB(v * (0.95 + t.hue * 0.35), v, v * 0.9);
-      tiles.add('crown', t.x, t.z, m4.compose(p.set(t.x, t.y, t.z), q, s.set(h * 0.75, h, h * 0.75)), col);
-    }
-  }
+  const kinds = {};
 
   // ----- Le sous-bois : herbes, fleurs, fougères, le long de la piste et dans les prairies -----
   const grassMat = windMaterial(canvasTexture(drawGrass(false)));
   const flowerMat = windMaterial(canvasTexture(drawGrass(true)));
   const fernMat = windMaterial(canvasTexture(drawFern));
   const tuft = tuftGeometry();
-  kinds.grass = { geometry: tuft, material: grassMat };
-  kinds.flowers = { geometry: tuft, material: flowerMat };
-  kinds.fern = { geometry: tuft, material: fernMat };
+  kinds.grass = { geometry: tuft, material: grassMat, near: true };
+  kinds.flowers = { geometry: tuft, material: flowerMat, near: true };
+  kinds.fern = { geometry: tuft, material: fernMat, near: true };
   const B = track.bounds;
   const winds = [grassMat, flowerMat, fernMat];
+  // Une piste plus longue a plus de sous-bois (la même densité le long de la piste).
+  const more = track.length > 1000 ? track.length / 884 : 1;
+  const treeline = track.map.env.treeline ?? null;
   let placed = 0;
-  for (let k = 0; k < 90000 && placed < 26000; k++) {
+  for (let k = 0; k < 90000 * more && placed < 26000 * more; k++) {
     // Surtout près de la piste : c'est là qu'on regarde.
     let x, z;
     if (rand() < 0.75) {
@@ -313,7 +218,8 @@ export function createVegetation(track, forestAt) {
   // ----- Les rochers et les troncs couchés -----
   kinds.rockA = { geometry: rockGeometry(1), material: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), castShadow: true, receiveShadow: true };
   kinds.rockB = { geometry: rockGeometry(2), material: kinds.rockA.material, castShadow: true, receiveShadow: true };
-  for (let k = 0; k < 1400; k++) {
+  const rockCount = Math.round(1400 * more * (treeline === null ? 1 : 1.8));
+  for (let k = 0; k < rockCount; k++) {
     let x, z;
     if (rand() < 0.7) {
       const ss = rand() * track.length, f = track.sample(ss), side = rand() < 0.5 ? -1 : 1;
@@ -323,15 +229,20 @@ export function createVegetation(track, forestAt) {
     const near = track.nearest(x, z, null, 0, 3);
     if (near.dist < TRAIL_HALF + 1.2 && near.inside) continue;
     if (track.treeNear(x, z, 0.6)) continue;
-    const r = 0.15 + Math.pow(rand(), 2.5) * 1.3;
+    let r = 0.15 + Math.pow(rand(), 2.5) * 1.3;
     const y = track.groundY(x, z);
+    if (treeline !== null) {
+      // L'alpage : des blocs de granit éboulés, parfois énormes ; jamais sur la piste.
+      r *= 1 + 1.3 * smoothstep(treeline - 20, treeline + 20, y);
+      if (near.inside) r = Math.min(r, Math.max(0.15, (near.dist - TRAIL_HALF - 0.8) * 0.9));
+    }
     q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.4, rand() * 6.3, (rand() - 0.5) * 0.4));
     tiles.add(rand() < 0.5 ? 'rockA' : 'rockB', x, z, m4.compose(p.set(x, y - r * 0.25, z), q, s.set(r * (1 + rand() * 0.6), r, r * (1 + rand() * 0.4))));
   }
   const logGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
   logGeo.rotateZ(Math.PI / 2);
   kinds.log = { geometry: logGeo, material: bark, castShadow: true, receiveShadow: true };
-  for (let k = 0; k < 220; k++) {
+  for (let k = 0; k < 220 * more; k++) {
     const x = B.xmin + rand() * (B.xmax - B.xmin), z = B.zmin + rand() * (B.zmax - B.zmin);
     const near = track.nearest(x, z, null, 0, 3);
     if (near.dist < 7 || forestAt(x, z) < 0.3) continue;
@@ -343,6 +254,11 @@ export function createVegetation(track, forestAt) {
   tiles.build(group, kinds);
   return {
     group,
-    update(t) { for (const m of winds) m.userData.time.value = t; },
+    update(t, camera) {
+      for (const m of winds) m.userData.time.value = t;
+      if (!camera) return;
+      const cx = camera.position.x, cz = camera.position.z;
+      for (const e of tiles.meshes) if (e.near) e.mesh.visible = Math.hypot(e.cx - cx, e.cz - cz) < 220 + TILE * 0.71;
+    },
   };
 }

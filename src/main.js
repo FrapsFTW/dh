@@ -1,17 +1,19 @@
 // Le jeu : le déroulé d'une manche (cabane, compte à rebours, course, arrivée), le chrono, le fantôme, les figures,
-// les deux modes (Normal, Ultra-réaliste), l'affichage.
+// les deux modes (Normal, Ultra-réaliste), les pistes, l'affichage.
 
 import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { initPhysics, createSim, STEP } from './sim/world.js';
 import { MODES, MODE_IDS, modeParams } from './sim/modes.js';
+import { MAPS, MAP_IDS, distToPolyline } from './sim/maps.js';
 import { autopilot } from './sim/autopilot.js';
 import { Input } from './input.js';
 import { Sound } from './audio.js';
 import { createScene } from './render/scene.js';
 import { createBikeModel } from './render/bikeModel.js';
 import { createCameraRig, CAMERA_SETTINGS } from './render/cameraRig.js';
-import { createPost } from './render/post.js';
+import { createPost, SPEED_FX } from './render/post.js';
+import { createSpeedParticles } from './render/speedFx.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -24,8 +26,19 @@ const fmt = (t) => {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 };
 const fmtDelta = (d) => `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)}`;
-// Un record par mode (les temps ne se comparent pas d'un mode à l'autre).
-const bestKey = (m) => `downhill.record.v3.${m}`;
+// La piste : ?carte=alpes, sinon la dernière choisie. En changer recharge la page (tout est reconstruit).
+const MAP_KEY = 'downhill.carte';
+const savedMap = (() => { try { return localStorage.getItem(MAP_KEY); } catch { return null; } })();
+const mapId = [params.get('carte'), savedMap].find((m) => MAP_IDS.includes(m)) || 'foret';
+function switchMap(m) {
+  if (!MAP_IDS.includes(m) || m === mapId) return;
+  try { localStorage.setItem(MAP_KEY, m); } catch { /* stockage indisponible */ }
+  const q = new URLSearchParams(location.search);
+  q.set('carte', m);
+  location.search = q.toString();
+}
+// Un record par piste et par mode (les temps ne se comparent pas d'un mode à l'autre). La forêt garde ses anciens records.
+const bestKey = (m) => (mapId === 'foret' ? `downhill.record.v3.${m}` : `downhill.record.v3.${mapId}.${m}`);
 const loadBest = (m) => { try { return JSON.parse(localStorage.getItem(bestKey(m))) || null; } catch { return null; } };
 const saveBest = (m, b) => { try { localStorage.setItem(bestKey(m), JSON.stringify(b)); } catch { /* stockage indisponible */ } };
 const MODE_KEY = 'downhill.mode';
@@ -34,9 +47,17 @@ let mode = [params.get('mode'), savedMode].find((m) => MODE_IDS.includes(m)) || 
 
 await loading('Démarrage du moteur physique…', 0.05);
 await initPhysics();
-await loading('Construction de la piste…', 0.15);
-const sim = createSim({ seed: Number(params.get('seed')) || 7, mode });
+await loading(`Construction de la piste : ${MAPS[mapId].name}…`, 0.15);
+const sim = createSim({ seed: Number(params.get('seed')) || 7, mode, map: mapId });
 const track = sim.track;
+// Pour les captures et les essais : ?depart=600&vitesse=13 pose le vélo lancé à 600 m de la cabane, chrono parti.
+if (params.has('depart')) {
+  const s0 = Number(params.get('depart'));
+  sim.bike.placeOnTrack(s0, Number(params.get('vitesse')) || 10);
+  sim.race.state = 'course';
+  sim.race.s = s0;
+  sim.race.next = track.gates.filter((g) => g.s < s0).length;
+}
 
 // ----- Affichage -----
 await loading('Plantation de la forêt…', 0.4);
@@ -50,7 +71,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.3;
-const world = createScene(sim, { low });
+const world = createScene(sim, { low, renderer });
 await loading('Préparation du vélo…', 0.75);
 const bikeModel = createBikeModel();
 world.scene.add(bikeModel.group);
@@ -62,6 +83,8 @@ const camera = new THREE.PerspectiveCamera(CAMERA_SETTINGS.fov, innerWidth / inn
 const rig = createCameraRig(camera, bikeModel, sim);
 if (params.get('cam') === 'chase') rig.setMode('chase');
 const post = createPost(renderer, world.scene, camera, { low });
+const particles = createSpeedParticles();
+world.scene.add(particles.object);
 post.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 addEventListener('resize', () => {
@@ -77,6 +100,7 @@ const gui = new GUI({ title: 'Réglages (G)' });
 const P = sim.params;
 const modeChoice = { mode };
 gui.add(modeChoice, 'mode', Object.fromEntries(MODE_IDS.map((m) => [MODES[m].name, m]))).name('Mode').onChange((m) => setMode(m));
+gui.add({ carte: mapId }, 'carte', Object.fromEntries(MAP_IDS.map((m) => [MAPS[m].name, m]))).name('Piste (recharge)').onChange(switchMap);
 const fSusp = gui.addFolder('Suspension');
 fSusp.add(P, 'springMaxForce', 800, 2500, 10).name('Ressort en fin de course (N)');
 fSusp.add(P, 'damperBump', 100, 1500, 10).name('Amortisseur compression');
@@ -111,6 +135,13 @@ fCam.add(CAMERA_SETTINGS, 'rollFollow', 0, 1, 0.05).name('La tête suit l\'incli
 fCam.add(CAMERA_SETTINGS, 'lookAhead', 0, 1.5, 0.05).name('Regard vers la sortie');
 fCam.add(CAMERA_SETTINGS, 'lookDown', -5, 25, 1).name('Regard vers le bas (°)');
 fCam.add(CAMERA_SETTINGS, 'shake', 0, 1.5, 0.05).name('Secousses');
+fCam.add(CAMERA_SETTINGS, 'buzz', 0, 2, 0.05).name('Vibration à haute vitesse');
+const fFx = gui.addFolder('Effets de vitesse');
+fFx.add(SPEED_FX, 'from', 10, 50, 1).name('À partir de (km/h)');
+fFx.add(SPEED_FX, 'to', 30, 90, 1).name('Au maximum à (km/h)');
+fFx.add(SPEED_FX, 'blur', 0, 2, 0.05).name('Flou sur les bords');
+fFx.add(SPEED_FX, 'aberration', 0, 2, 0.05).name('Aberration chromatique');
+fFx.add(SPEED_FX, 'tunnel', 0, 2, 0.05).name('Vision en tunnel');
 gui.add({ reset() { Object.assign(P, modeParams(mode)); gui.controllersRecursive().forEach((c) => c.updateDisplay()); } }, 'reset').name('Valeurs du mode');
 gui.close();
 gui.hide();
@@ -119,7 +150,7 @@ gui.hide();
 const input = new Input();
 const sound = new Sound();
 let auto = params.has('autopilot');
-let phase = auto ? 'ride' : 'hut'; // hut (dans la cabane) → countdown → ride → finished
+let phase = auto || params.has('depart') ? 'ride' : 'hut'; // hut (dans la cabane) → countdown → ride → finished
 let countdown = 0, lastBeep = 0;
 let best = loadBest(mode);
 let ghostOn = !!(best && best.trace);
@@ -159,7 +190,10 @@ function updateModeUI() {
   $('modeTag').textContent = MODES[mode].name.toUpperCase();
   for (const b of document.querySelectorAll('[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
   $('modeBlurb').textContent = MODES[mode].blurb;
+  for (const b of document.querySelectorAll('[data-map]')) b.classList.toggle('on', b.dataset.map === mapId);
+  $('mapBlurb').textContent = MAPS[mapId].blurb;
 }
+for (const b of document.querySelectorAll('[data-map]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') switchMap(b.dataset.map); });
 for (const b of document.querySelectorAll('[data-mode]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setMode(b.dataset.mode); });
 const nextMode = () => MODE_IDS[(MODE_IDS.indexOf(mode) + 1) % MODE_IDS.length];
 const startHint = () => `Pédale ou appuie sur A pour lancer le départ · mode ${MODES[mode].name} (M ou LB pour changer)`;
@@ -175,7 +209,7 @@ function restart() {
   $('splitBox').innerHTML = '';
   if (!auto) showMessage('', startHint(), 9999, true);
 }
-if (!auto) showMessage('', startHint(), 9999, true);
+if (!auto && !params.has('depart')) showMessage('', startHint(), 9999, true);
 
 const HOLD = { steer: 0, brakeFront: 1, brakeRear: 1, pedal: 0, weight: 0, hop: false };
 const STOP = { steer: 0, brakeFront: 0.35, brakeRear: 0.6, pedal: 0, weight: -0.3, hop: false };
@@ -258,7 +292,7 @@ function onSplit() {
   row.innerHTML = `<span class="n">${isFinish ? 'ARRIVÉE' : `INTER ${i + 1}`}</span><span class="t tab">${fmt(t)}</span>${ref != null ? `<span class="d tab ${t - ref < 0 ? 'ahead' : 'behind'}">${fmtDelta(t - ref)}</span>` : ''}`;
   const box = $('splitBox');
   box.appendChild(row);
-  while (box.children.length > 5) box.removeChild(box.firstChild);
+  while (box.children.length > 7) box.removeChild(box.firstChild);
 }
 
 function onFinish() {
@@ -283,6 +317,7 @@ function onFinish() {
   rows.push(['Chutes et sorties', String(race.crashes)]);
   const tricks = sim.tricks.landed;
   rows.push(['Figures', tricks.length ? tricks.join(', ') : '–']);
+  rows.push(['Piste', MAPS[mapId].name]);
   rows.push(['Mode', MODES[mode].name]);
   $('resRows').innerHTML = rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
   finishShownAt = performance.now() + 1800;
@@ -383,8 +418,11 @@ function frame(now) {
   drawStartClock();
   drawFinishScreen(dt);
   const nearFinish = Math.max(0, 1 - Math.abs(race.s - track.sFinish) / 70);
-  sound.update(st, nearFinish, dt);
-  post.render(st.speed);
+  const creek = track.map.creek;
+  const nearWater = creek ? 1 - THREE.MathUtils.smoothstep(distToPolyline(creek, st.position.x, st.position.z), 6, 45) : 0;
+  sound.update(st, nearFinish, dt, nearWater);
+  particles.update(camera, st.velocity, dt);
+  post.render(st.speed, dt);
 
   $('chrono').textContent = fmt(race.state === 'pret' ? 0 : race.time);
   $('best').textContent = best ? `Record ${MODES[mode].name} ${fmt(best.time)}` : '';
@@ -420,5 +458,5 @@ window.__game = {
   sim, rig,
   setAutopilot(v) { auto = v; if (phase === 'hut') phase = 'ride'; },
   setMode,
-  state: () => ({ mode, tricks: sim.tricks.landed.slice(), time: sim.race.time, raceState: sim.race.state, s: sim.race.s, speed: sim.bike.state().speed, crashes: sim.race.crashes, crashed: !!sim.bike.crashed }),
+  state: () => ({ map: mapId, mode, tricks: sim.tricks.landed.slice(), time: sim.race.time, raceState: sim.race.state, s: sim.race.s, speed: sim.bike.state().speed, crashes: sim.race.crashes, crashed: !!sim.bike.crashed }),
 };

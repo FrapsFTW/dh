@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Banc d'essai des arbres</title>
+<style>html,body{margin:0;background:#9fb6c8}canvas{display:block}pre{position:fixed;left:8px;top:8px;margin:0;color:#fff;font:12px monospace;text-shadow:0 1px 2px #000}</style></head>
+<body><pre id="log"></pre>
+<script type="module">
+// Banc d'essai : les modèles d'EZ-Tree (MIT, Daniel Greenheck) sous la lumière du jeu, avec leur nombre de triangles.
+//   /tools/viewer/arbres.html?presets=Pine Medium,Oak Medium
+import * as THREE from 'three';
+import { Tree } from '@dgreenheck/ez-tree';
+const P = new URLSearchParams(location.search);
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; };
+const presets = (P.get('presets') || 'Pine Small,Pine Medium,Pine Large,Oak Medium,Aspen Medium,Ash Medium').split(',');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#a9c3d8');
+scene.add(new THREE.HemisphereLight('#cfe3f5', '#4a3a2a', 1.2));
+const sun = new THREE.DirectionalLight('#fff1dc', 2.4); sun.position.set(-30, 60, 25); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#4d5a32' }));
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+let x = 0;
+const H = +(P.get('h') || 18); // hauteur visée, en mètres
+for (const name of presets) {
+  const t = new Tree();
+  t.loadPreset(name.trim());
+  if (P.get('seed')) t.options.seed = +P.get('seed');
+  t.generate();
+  const bb = new THREE.Box3().setFromObject(t);
+  const h = bb.max.y - bb.min.y;
+  const s = H / h;
+  t.scale.setScalar(s);
+  t.position.x = x; x += (bb.max.x - bb.min.x) * s * 0.9 + 4;
+  scene.add(t);
+  const tri = (m) => (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
+  log(`${name} : tronc+branches ${tri(t.branchesMesh)} tri, feuilles ${tri(t.leavesMesh)} tri, hauteur d'origine ${h.toFixed(1)}`);
+}
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 1000);
+camera.position.set(x / 2, H * 0.55, x * 0.75 + 20);
+camera.lookAt(x / 2, H * 0.45, 0);
+// Les textures (écorce, feuilles) se chargent en arrière-plan : on dessine en continu.
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+setTimeout(() => { window.__done = true; }, 6000);
+</script></body></html>

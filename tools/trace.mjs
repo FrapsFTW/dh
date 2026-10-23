@@ -1,6 +1,7 @@
 // Trace : fait rouler le vélo sans affichage et imprime son état à intervalles réguliers.
 //   node tools/trace.mjs auto 200          (pilote automatique, 200 s)
 //   node tools/trace.mjs coast 6 [pas]     (roue libre) · otb · back · rear · turn · hop · pedal
+// Variables d'environnement : CARTE=alpes, MODE=normal.
 import { initPhysics, createSim, STEP } from '../src/sim/world.js';
 import { autopilot } from '../src/sim/autopilot.js';
 
@@ -8,7 +9,7 @@ await initPhysics();
 const mode = process.argv[2] || 'coast';
 const T = +(process.argv[3] || 8);
 const every = +(process.argv[4] || 0.5);
-const sim = createSim();
+const sim = createSim({ map: process.env.CARTE || 'foret', mode: process.env.MODE || null });
 let last = -1;
 const deg = (r) => (r * 57.3).toFixed(1);
 for (let i = 0; i < T / STEP; i++) {

@@ -27,8 +27,19 @@ const jobs = quick
     ['premiere-personne', '?autopilot&shot', [6, 24, 34, 62, 80]],
     ['vue-exterieure', '?autopilot&shot&cam=chase', [9, 44, 74]],
     ['aide', '?shot', [1]],
+    ['vitesse', '?shot&nohelp&depart=300&vitesse=16.5', [0.8]],
+    ['foret', '?autopilot&shot&cam=chase&depart=250&vitesse=10', [1]],
     ['backflip', '?autopilot&shot&cam=chase&mode=normal&figure=backflip', [75.95, 76.25, 76.55, 78]],
     ['backflip-casque', '?autopilot&shot&mode=normal&figure=backflip', [76.25]],
+    // La Grande Combe : un passage par tronçon.
+    ['alpes-crete', '?carte=alpes&autopilot&shot&cam=chase&depart=40&vitesse=8', [0.6]],
+    ['alpes-crete-casque', '?carte=alpes&autopilot&shot&depart=120&vitesse=11', [0.5]],
+    ['alpes-pierrier', '?carte=alpes&autopilot&shot&cam=chase&depart=292&vitesse=9', [0.5]],
+    ['alpes-lacets', '?carte=alpes&autopilot&shot&depart=600&vitesse=8', [0.5]],
+    ['alpes-toboggan', '?carte=alpes&autopilot&shot&cam=chase&depart=1010&vitesse=8', [0.5]],
+    ['alpes-pont', '?carte=alpes&autopilot&shot&cam=chase&depart=1158&vitesse=7', [0.8]],
+    ['alpes-autoroute', '?carte=alpes&autopilot&shot&depart=1790&vitesse=12', [0.5]],
+    ['alpes-arrivee', '?carte=alpes&autopilot&shot&cam=chase&depart=2225&vitesse=10', [3.2]],
   ];
 try {
   for (const [name, query, waits] of jobs) {
@@ -47,7 +58,7 @@ try {
       elapsed = w;
       const st = await page.evaluate(() => window.__game.state());
       const file = `shots/${name}-${elapsed}s.png`;
-      await page.screenshot({ path: file });
+      await page.screenshot({ path: file, timeout: 300000 });
       console.log(file, JSON.stringify(st));
     }
     const fps = await page.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 3000) requestAnimationFrame(f); else res(n / 3); }; requestAnimationFrame(f); }));

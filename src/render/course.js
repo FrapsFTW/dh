@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng, fbm } from '../sim/noise.js';
 import { TAPE_U, TRAIL_HALF } from '../sim/track.js';
+import { NOISE_GLSL } from './glsl.js';
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
@@ -104,10 +105,22 @@ transformed.y += w * 0.01 * flex;`);
   const stakeMats = [];
   const tapePos = [], tapeUV = [], tapeFlex = [], tapeSide = [], tapeIdx = [];
   const sEnd = arena ? arena.a + 4 : track.length;
+  // Sur un pont, ce sont ses garde-corps : la rubalise s'interrompt.
+  const nearBridge = (s) => track.bridges.some((f) => s > f.a - 3 && s < f.b + 3);
   for (const sideSign of [-1, 1]) {
     let len = 0, prev = null, base = tapePos.length / 3;
     const spacing = 4;
+    const closeRun = () => {
+      const count = tapePos.length / 3 - base;
+      for (let i = 0; i < count / 2 - 1; i++) {
+        const a = base + i * 2;
+        tapeIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+      base = tapePos.length / 3;
+      prev = null;
+    };
     for (let s = startRamp.b + 1; s < sEnd; s += spacing) {
+      if (nearBridge(s)) { if (prev) closeRun(); continue; }
       const u = sideSign * TAPE_U;
       const fr = frameAt(track, s, u);
       stakeMats.push(m4.compose(fr.pos, q.identity(), sc.set(1, 0.9 + rand() * 0.15, 1)).clone());
@@ -127,11 +140,7 @@ transformed.y += w * 0.01 * flex;`);
       }
       prev = top;
     }
-    const count = tapePos.length / 3 - base;
-    for (let i = 0; i < count / 2 - 1; i++) {
-      const a = base + i * 2;
-      tapeIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-    }
+    closeRun();
   }
   const tapeGeo = new THREE.BufferGeometry();
   tapeGeo.setAttribute('position', new THREE.Float32BufferAttribute(tapePos, 3));
@@ -196,7 +205,7 @@ transformed.y += w * 0.01 * flex;`);
   }
 
   // ---------- La lèvre du drop : une dalle de rocher ----------
-  for (const f of track.features.filter((f) => f.type === 'jump' && f.kind === 'drop')) {
+  for (const f of track.features.filter((f) => f.type === 'jump' && f.kind === 'drop' && f.look !== 'terre')) {
     for (let u = -TRAIL_HALF - 0.6; u <= TRAIL_HALF + 0.6; u += 0.9) {
       const fr = frameAt(track, f.lipS - 0.2, u);
       const r = 0.55 + rand() * 0.25;
@@ -243,6 +252,151 @@ transformed.y += w * 0.01 * flex;`);
     const road = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: gravel, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
     road.receiveShadow = true;
     group.add(road);
+  }
+
+  // ---------- Les ponts : tablier en planches, garde-corps, pieux jusqu'au lit du torrent, culées en pierre ----------
+  const plankTex = canvasTex(256, 256, (ctx, w2, h2) => {
+    for (let i = 0; i < 8; i++) {
+      const v = 112 + ((i * 37) % 44);
+      ctx.fillStyle = `rgb(${v + 18},${v * 0.8},${v * 0.56})`; ctx.fillRect(0, i * 32, w2, 30);
+      ctx.fillStyle = 'rgba(40,25,10,0.65)'; ctx.fillRect(0, i * 32 + 30, w2, 2);
+      ctx.fillStyle = 'rgba(30,20,10,0.5)';
+      for (const x of [18, w2 - 22]) { ctx.beginPath(); ctx.arc(x, i * 32 + 15, 2.2, 0, 7); ctx.fill(); } // les clous
+    }
+  }, true).tex;
+  for (const f of track.bridges) {
+    const HALF = 1.9, a = f.a - 1.5, b = f.b + 1.5;
+    const deckY = (s, u) => track.trailY(s, Math.max(-1.7, Math.min(1.7, u))) + 0.05;
+    // Le tablier, et ses rives (une poutre de 30 cm de chaque côté).
+    const dpos = [], duv = [], didx = [];
+    let k = 0;
+    for (let s = a; s <= b + 0.01; s += 0.5, k++) {
+      for (const [u, dy] of [[-HALF, -0.3], [-HALF, 0], [HALF, 0], [HALF, -0.3]]) {
+        const fr = frameAt(track, s, u);
+        dpos.push(fr.pos.x, deckY(s, u) + dy, fr.pos.z); duv.push(u / 3.8 + 0.5 + dy, s / 2);
+      }
+      if (k > 0) {
+        const o = (k - 1) * 4;
+        for (const [p0, p1] of [[0, 1], [1, 2], [2, 3]]) didx.push(o + p0, o + p1, o + p0 + 4, o + p1, o + p1 + 4, o + p0 + 4);
+      }
+    }
+    const dgeo = new THREE.BufferGeometry();
+    dgeo.setAttribute('position', new THREE.Float32BufferAttribute(dpos, 3));
+    dgeo.setAttribute('uv', new THREE.Float32BufferAttribute(duv, 2));
+    dgeo.setIndex(didx);
+    dgeo.computeVertexNormals();
+    const deck = new THREE.Mesh(dgeo, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.85, side: THREE.DoubleSide }));
+    deck.castShadow = deck.receiveShadow = true;
+    group.add(deck);
+    // Les garde-corps : un poteau tous les 1,6 m, une main courante et une lisse.
+    const posts = [];
+    for (const side of [-1, 1]) {
+      const top = [], mid = [];
+      for (let s = a + 0.3; s <= b - 0.2; s += 1.6) {
+        const fr = frameAt(track, s, side * (HALF - 0.08));
+        const y0 = deckY(s, side * HALF);
+        posts.push(m4.compose(p.set(fr.pos.x, y0 + 0.52, fr.pos.z), q.identity(), sc.set(1, 1, 1)).clone());
+        top.push(new THREE.Vector3(fr.pos.x, y0 + 1.04, fr.pos.z));
+        mid.push(new THREE.Vector3(fr.pos.x, y0 + 0.55, fr.pos.z));
+      }
+      for (const [pts, r] of [[top, 0.05], [mid, 0.035]]) {
+        const rail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 3, r, 6), woodDark);
+        rail.castShadow = true;
+        group.add(rail);
+      }
+    }
+    const postGeo = new THREE.BoxGeometry(0.11, 1.08, 0.11);
+    const postMesh = new THREE.InstancedMesh(postGeo, woodDark, posts.length);
+    posts.forEach((m, i) => postMesh.setMatrixAt(i, m));
+    postMesh.castShadow = true;
+    group.add(postMesh);
+    // Les pieux, jusqu'au lit du torrent, et une traverse sous le tablier.
+    for (const t of [0.3, 0.7]) {
+      const s = f.a + (f.b - f.a) * t;
+      for (const side of [-1, 1]) {
+        const fr = frameAt(track, s, side * 1.45);
+        const top = deckY(s, side * 1.45) - 0.3, bottom = track.natural(fr.pos.x, fr.pos.z) - 0.4;
+        const h = Math.max(0.5, top - bottom);
+        const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, h, 8), woodDark);
+        pile.position.set(fr.pos.x, bottom + h / 2, fr.pos.z);
+        pile.castShadow = true;
+        group.add(pile);
+      }
+      const fr = frameAt(track, s);
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.2, 0.2), woodDark);
+      beam.position.set(fr.pos.x, deckY(s, 0) - 0.42, fr.pos.z);
+      beam.rotation.y = fr.yaw;
+      group.add(beam);
+    }
+    // Les culées : de gros blocs aux deux bouts, de chaque côté.
+    for (const s of [f.a - 1, f.b + 1]) {
+      for (const side of [-1, 1]) {
+        for (let k2 = 0; k2 < 3; k2++) {
+          const fr = frameAt(track, s + (rand() - 0.5) * 2, side * (2.3 + rand() * 1.2));
+          const r = 0.6 + rand() * 0.5;
+          const m = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }));
+          m.position.copy(fr.pos).add(new THREE.Vector3(0, -r * 0.4, 0));
+          m.rotation.y = rand() * 6;
+          m.scale.set(r, r * 0.8, r);
+          m.castShadow = m.receiveShadow = true;
+          group.add(m);
+        }
+      }
+    }
+  }
+
+  // ---------- Le torrent : de l'eau qui file au fond de son ravin ----------
+  if (track.map.creek) {
+    const pts = track.map.creek.map(([x, z]) => new THREE.Vector3(x, 0, z));
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    const N = Math.ceil(curve.getLength() / 2);
+    const wpos = [], wuv = [], widx = [];
+    let along = 0, prevP = null, rows = 0;
+    for (let i = 0; i <= N; i++) {
+      const c = curve.getPointAt(i / N), tg = curve.getTangentAt(i / N);
+      if (prevP) along += prevP.distanceTo(c);
+      prevP = c.clone();
+      // Seulement sur le relief détaillé (au-delà, le relief lointain est trop grossier pour son ravin).
+      const B = track.bounds;
+      if (c.x < B.xmin + 3 || c.x > B.xmax - 3 || c.z < B.zmin + 3 || c.z > B.zmax - 3) { if (rows) break; continue; }
+      const nx = tg.z, nz = -tg.x;
+      for (const w of [-1.3, 1.3]) {
+        const x = c.x + nx * w, z = c.z + nz * w;
+        wpos.push(x, track.natural(c.x, c.z) + 0.3, z);
+        wuv.push(w / 2.6 + 0.5, along);
+      }
+      if (rows > 0) { const o = (rows - 1) * 2; widx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
+      rows++;
+    }
+    const wgeo = new THREE.BufferGeometry();
+    wgeo.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
+    wgeo.setAttribute('uv', new THREE.Float32BufferAttribute(wuv, 2));
+    wgeo.setIndex(widx);
+    wgeo.computeVertexNormals();
+    const water = new THREE.MeshStandardMaterial({ color: lin('#5d8a8f'), roughness: 0.12, metalness: 0.1, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    water.userData.time = { value: 0 };
+    water.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = water.userData.time;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vFlow;')
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvFlow = uv;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec2 vFlow;\n' + NOISE_GLSL)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+// L'écume qui file vers l'aval, plus blanche sur les bords et entre les pierres.
+vec2 fp = vec2(vFlow.x * 3.0, vFlow.y * 0.6 - uTime * 2.2);
+float foam = smoothstep(0.62, 0.85, dh_noise(fp * vec2(2.0, 1.0)) * 0.6 + dh_noise(fp * 4.0 + 3.0) * 0.4);
+foam = max(foam, smoothstep(0.35, 0.5, abs(vFlow.x - 0.5)) * 0.6);
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 0.96), foam * 0.8);
+diffuseColor.a = mix(diffuseColor.a, 1.0, foam);`)
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+vec2 rp = vec2(vFlow.x * 2.0, vFlow.y * 0.8 - uTime * 2.5);
+normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0.5) * 0.6);`);
+    };
+    dynamic.push((t) => { water.userData.time.value = t; });
+    const stream = new THREE.Mesh(wgeo, water);
+    stream.receiveShadow = true;
+    stream.name = 'torrent';
+    group.add(stream);
   }
 
   // ---------- Les portes : arches et banderoles ----------

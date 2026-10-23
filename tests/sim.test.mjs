@@ -8,6 +8,7 @@ import { initPhysics, createSim, STEP } from '../src/sim/world.js';
 import { createTrack } from '../src/sim/track.js';
 import { autopilot } from '../src/sim/autopilot.js';
 import { trickName } from '../src/sim/tricks.js';
+import { MAP_IDS } from '../src/sim/maps.js';
 
 await initPhysics();
 
@@ -20,31 +21,44 @@ const heading = (st) => {
   return Math.atan2(f.x, -f.z); // > 0 quand on tourne vers la droite
 };
 
-test('la piste est toujours la même pour une même graine', () => {
-  const a = createTrack(7), b = createTrack(7);
-  assert.equal(a.length, b.length);
-  assert.equal(a.trees.length, b.trees.length);
-  assert.equal(a.trailY(123.4, 1.2), b.trailY(123.4, 1.2));
+const tracks = Object.fromEntries(MAP_IDS.map((m) => [m, createTrack(7, m)]));
+
+test('chaque piste est toujours la même pour une même graine', () => {
+  for (const m of MAP_IDS) {
+    const a = tracks[m], b = createTrack(7, m);
+    assert.equal(a.length, b.length);
+    assert.equal(a.trees.length, b.trees.length);
+    assert.equal(a.trailY(123.4, 1.2), b.trailY(123.4, 1.2));
+  }
 });
 
-test('la piste est faisable : virages assez larges, portes dans l\'ordre, aucun arbre sur la piste', () => {
-  const t = createTrack(7);
-  let kmax = 0;
-  for (const k of t.K) kmax = Math.max(kmax, Math.abs(k));
-  assert.ok(1 / kmax > 9, `virage le plus serré : ${(1 / kmax).toFixed(1)} m`);
-  for (let i = 1; i < t.gates.length; i++) assert.ok(t.gates[i].s > t.gates[i - 1].s);
-  assert.equal(t.gates[0].kind, 'depart');
-  assert.equal(t.gates.at(-1).kind, 'arrivee');
-  for (const tree of t.trees) assert.ok(t.nearest(tree.x, tree.z, null, 0, 2).dist > 5, 'un arbre est sur la piste');
+test('chaque piste est faisable : virages assez larges, portes dans l\'ordre, aucun arbre sur la piste', () => {
+  for (const m of MAP_IDS) {
+    const t = tracks[m];
+    let kmax = 0;
+    for (const k of t.K) kmax = Math.max(kmax, Math.abs(k));
+    assert.ok(1 / kmax > 9, `${m} : virage le plus serré ${(1 / kmax).toFixed(1)} m`);
+    for (let i = 1; i < t.gates.length; i++) assert.ok(t.gates[i].s > t.gates[i - 1].s);
+    assert.equal(t.gates[0].kind, 'depart');
+    assert.equal(t.gates.at(-1).kind, 'arrivee');
+    for (const tree of t.trees) assert.ok(t.nearest(tree.x, tree.z, null, 0, 2).dist > 5, `${m} : un arbre est sur la piste`);
+  }
 });
 
-test('la piste suit la montagne : jamais de tranchée ni de remblai de plus de 3 m', () => {
-  const t = createTrack(7);
-  for (const d of t.D) assert.ok(Math.abs(d) < 3, `écart ${d.toFixed(1)} m`);
+test('chaque piste suit la montagne : jamais de tranchée ni de remblai de plus de 3 m', () => {
+  for (const m of MAP_IDS) for (const d of tracks[m].D) assert.ok(Math.abs(d) < 3, `${m} : écart ${d.toFixed(1)} m`);
+});
+
+test('les sauts ne creusent pas de fosse : la réception reste à moins de 4 m sous la pente', () => {
+  for (const m of MAP_IDS) {
+    for (const f of tracks[m].features.filter((f) => f.type === 'jump')) {
+      assert.ok(Math.min(...f.prof) > -4, `${m}, ${f.name} : creux de ${Math.min(...f.prof).toFixed(1)} m`);
+    }
+  }
 });
 
 test('chaque saut se passe à sa vitesse prévue : on se pose sans choc', () => {
-  const t = createTrack(7);
+  for (const t of Object.values(tracks)) {
   const y = (s) => t.trailY(s, 0);
   for (const f of t.features.filter((f) => f.type === 'jump')) {
     const lip = f.lipS, sl = (y(lip) - y(lip - 0.25)) / 0.25;
@@ -57,16 +71,50 @@ test('chaque saut se passe à sa vitesse prévue : on se pose sans choc', () => 
         const gs = (y(lip + x + 0.3) - y(lip + x - 0.3)) / 0.6, ts = (vy - 9.81 * tt) / vx;
         impact = Math.abs(Math.sin(Math.atan(ts) - Math.atan(gs))) * Math.hypot(vx, vy - 9.81 * tt);
       }
-      assert.ok(impact !== null && impact < 5.5, `${f.name} à ${v.toFixed(1)} m/s : choc ${impact?.toFixed(1)} m/s`);
+      assert.ok(impact !== null && impact < 5.5, `${t.map.id}, ${f.name} à ${v.toFixed(1)} m/s : choc ${impact?.toFixed(1)} m/s`);
     }
+  }
   }
 });
 
 test('sur la piste on roule sur de la terre, à côté sur de l\'herbe', () => {
-  const t = createTrack(7);
+  const t = tracks.foret;
   const f = t.sample(120);
   assert.equal(t.surfaceAt(f.x, f.z).name, 'terre');
   assert.equal(t.surfaceAt(f.x + 7 * f.rx, f.z + 7 * f.rz).name, 'herbe');
+});
+
+test('La Grande Combe : graviers en altitude, granit sur la dalle, planches sur le pont, terre en forêt', () => {
+  const t = tracks.alpes;
+  const at = (s) => { const f = t.sample(s); return t.surfaceAt(f.x, f.z).name; };
+  const mid = (type) => { const f = t.features.find((f) => f.type === type); return (f.a + f.b) / 2; };
+  assert.equal(at(100), 'gravier');
+  assert.equal(at(mid('slab')), 'roche');
+  assert.equal(at(mid('bridge')), 'bois');
+  assert.equal(at(1600), 'terre');
+  // Sous le pont, le ravin reste ouvert : à 4 m du milieu, on est bien plus bas que le tablier.
+  const s = mid('bridge');
+  assert.ok(t.trailY(s, 4) < t.trailY(s, 0) - 1, `ravin ${(t.trailY(s, 0) - t.trailY(s, 4)).toFixed(2)} m sous le tablier`);
+});
+
+test('La Grande Combe : pas d\'arbres au-dessus de la limite de la forêt, la forêt en dessous', () => {
+  const t = tracks.alpes, tl = t.map.env.treeline;
+  assert.equal(t.trees.filter((tr) => tr.y > tl + 50).length, 0);
+  const low = t.trees.filter((tr) => tr.y < tl - 40).length;
+  assert.ok(low > 3000, `${low} arbres en forêt`);
+});
+
+test('après une chute, on repart du dernier point de reprise passé, jamais au-delà de la prochaine porte', () => {
+  const sim = createSim({ map: 'alpes' });
+  const { race, track } = sim;
+  for (const p of track.respawns) assert.ok(!track.features.some((f) => f.type === 'jump' && p > f.a - 3 && p < f.b), `point de reprise sur un saut : ${p}`);
+  race.state = 'course';
+  race.next = 2; // porte 1 passée
+  race.reached = 640;
+  const s = race.respawnS();
+  assert.ok(s > track.gates[1].s + 1 && s < 640, `repart à ${s.toFixed(0)} m`);
+  race.reached = 5000;
+  assert.ok(race.respawnS() < track.gates[2].s, 'jamais au-delà de la prochaine porte');
 });
 
 test('on sort de la cabane en pédalant, puis en roue libre le vélo descend tout droit ; le chrono part à la ligne', () => {
@@ -228,7 +276,7 @@ test('un appui commencé en l\'air ne déclenche pas de bunny-hop en retombant',
 function trickOnFinishJump(mode, hold) {
   const sim = createSim({ mode });
   const jump = sim.track.features.find((f) => f.name === 'saut d\'arrivée');
-  sim.race.next = 4; sim.race.state = 'course';
+  sim.race.next = sim.track.gates.length - 1; sim.race.state = 'course';
   sim.bike.placeOnTrack(jump.lipS - 60, 11);
   sim.race.s = jump.lipS - 60;
   let inAir = false;
@@ -296,3 +344,22 @@ test('mode Normal : le pilote automatique descend toute la piste', { timeout: 30
   assert.equal(sim.race.crashes, 0, `${sim.race.crashes} chutes`);
   console.log(`  pilote auto, mode Normal : ${sim.race.time.toFixed(1)} s`);
 });
+
+// ---------- La Grande Combe ----------
+
+for (const mode of ['ultra', 'normal']) {
+  test(`La Grande Combe, mode ${mode === 'ultra' ? 'Ultra-réaliste' : 'Normal'} : le pilote automatique descend toute la piste sans tomber`, { timeout: 600000 }, () => {
+    const sim = createSim({ map: 'alpes', mode });
+    let t = 0;
+    while (sim.race.state !== 'arrivee' && t < 400) {
+      sim.step(autopilot(sim));
+      if (sim.bike.crashed && sim.bike.crashed.t > 1) sim.respawn();
+      if (sim.race.out) sim.respawn();
+      t += STEP;
+    }
+    assert.equal(sim.race.state, 'arrivee', `arrêté à ${sim.race.s.toFixed(0)} m sur ${sim.track.length.toFixed(0)}`);
+    assert.equal(sim.race.splits.length, sim.track.gates.length - 1);
+    assert.equal(sim.race.crashes, 0, `${sim.race.crashes} chutes`);
+    console.log(`  pilote auto, La Grande Combe, ${mode} : ${sim.race.time.toFixed(1)} s`);
+  });
+}

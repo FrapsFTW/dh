@@ -1,5 +1,5 @@
 // Le son, entièrement synthétisé (Web Audio) : bips du départ, vent, roulement des pneus selon le sol, cliquetis
-// de la roue libre, pneu qui glisse, chocs de suspension, chute, public à l'arrivée.
+// de la roue libre, pneu qui glisse, chocs de suspension, chute, public à l'arrivée, torrent près du pont.
 // Le navigateur n'autorise le son qu'après une action du joueur : il démarre à la première touche ou au premier clic.
 
 export class Sound {
@@ -39,6 +39,8 @@ export class Sound {
     this.tire = loop('bandpass', 500, 0.9);
     this.skid = loop('bandpass', 1800, 2.5);
     this.crowd = loop('bandpass', 900, 0.6);
+    this.rumble = loop('lowpass', 140, 0.8); // le vent qui tape dans le casque, à haute vitesse
+    this.stream = loop('bandpass', 1500, 0.4); // le torrent : un souffle d'eau qui bouillonne
     // La roue libre : un cliquetis dont la fréquence suit la roue arrière.
     const hub = ctx.createOscillator();
     hub.type = 'square';
@@ -84,7 +86,8 @@ export class Sound {
     setTimeout(() => this.tone(1175, 0.32, 0.16, 'triangle'), 110);
   }
 
-  update(st, nearFinish, dt) {
+  /** nearWater : de 0 (loin) à 1 (au bord du torrent). */
+  update(st, nearFinish, dt, nearWater = 0) {
     if (!this.ctx || this.ctx.state !== 'running') return;
     const t = this.ctx.currentTime, k = 0.06;
     const v = st.speed;
@@ -92,9 +95,12 @@ export class Sound {
     const grounded = st.contacts > 0;
     this.wind.g.gain.setTargetAtTime(Math.min(0.5, 0.0012 * v * v), t, k);
     this.wind.f.frequency.setTargetAtTime(300 + v * 45, t, k);
+    // À haute vitesse, le vent bat dans le casque : un grondement grave qui palpite.
+    const kmh = v * 3.6, gust = 0.75 + 0.25 * Math.sin(t * 6.3) * Math.sin(t * 2.9 + 1.1);
+    this.rumble.g.gain.setTargetAtTime(Math.min(0.45, Math.max(0, (kmh - 25) / 40)) * 0.45 * gust, t, 0.05);
     // Le roulement : plus fort et plus aigu sur les cailloux et les racines.
     const surf = (wf.surface || wr.surface || { name: 'terre' }).name;
-    const rough = surf === 'cailloux' ? 2.2 : surf === 'racines' ? 1.6 : surf === 'herbe' ? 0.7 : surf === 'bois' ? 1.3 : 1;
+    const rough = surf === 'cailloux' ? 2.2 : surf === 'racines' ? 1.6 : surf === 'gravier' ? 1.4 : surf === 'herbe' ? 0.7 : surf === 'bois' ? 1.3 : surf === 'roche' ? 0.8 : 1;
     this.tire.g.gain.setTargetAtTime(grounded ? Math.min(0.35, v * 0.022 * rough) : 0, t, 0.03);
     this.tire.f.frequency.setTargetAtTime(220 + v * 30 * rough, t, k);
     const slide = Math.max(wf.contact ? wf.slip : 0, wr.contact ? wr.slip : 0);
@@ -105,6 +111,9 @@ export class Sound {
     this.hub.f.frequency.setTargetAtTime(Math.abs(wr.omega) * 16, t, 0.05);
     this.hub.g.gain.setTargetAtTime(coasting ? Math.min(0.05, Math.abs(wr.omega) * 0.002) : 0, t, 0.05);
     this.crowd.g.gain.setTargetAtTime(nearFinish * 0.22, t, 0.3);
+    const gurgle = 0.8 + 0.2 * Math.sin(t * 4.1) * Math.sin(t * 6.7 + 2);
+    this.stream.g.gain.setTargetAtTime(nearWater * 0.2 * gurgle, t, 0.2);
+    this.stream.f.frequency.setTargetAtTime(1300 + 500 * gurgle, t, 0.1);
     // Les chocs : quand la suspension s'enfonce vite.
     const hit = Math.max(wf.xdot || 0, wr.xdot || 0);
     if (hit > 1.6 && (!this._lastThump || t - this._lastThump > 0.12)) { this._lastThump = t; this.thump((hit - 1.2) / 3); }

@@ -31,22 +31,37 @@ export function autopilot(sim, opts = {}) {
   mem.steer += (want - mem.steer) * Math.min(1, STEP / 0.12); // il est appelé à chaque pas de physique
   const steer = mem.steer;
 
-  // Vitesse visée : assez lente pour chaque virage à venir, en tenant compte de la distance pour freiner.
+  // Vitesse visée : assez lente pour chaque virage à venir, en tenant compte de la distance pour freiner. Dans une
+  // pente raide, la gravité mange une partie du freinage : il faut s'y prendre plus tôt.
   let vmax = opts.vmax || 13;
-  for (let d = 0; d < 70; d += 2) {
+  const y0 = track.trailY(race.s, 0);
+  const decelTo = (d) => (d < 1 ? BRAKE_DECEL : clamp(BRAKE_DECEL + 2 - (G * (y0 - track.trailY(race.s + d, 0))) / d, 0.6, BRAKE_DECEL));
+  for (let d = 0; d < 90; d += 2) {
     const f = track.sample(race.s + d);
     const k = Math.abs(f.k);
     const lat = TURN_GRIP + Math.max(0, Math.sign(f.k) * f.bank) * 0.6; // un virage relevé se passe plus vite
     const vTurn = Math.sqrt((lat * G) / Math.max(k, 1e-3));
-    vmax = Math.min(vmax, Math.sqrt(vTurn * vTurn + 2 * BRAKE_DECEL * d));
+    vmax = Math.min(vmax, Math.sqrt(vTurn * vTurn + 2 * decelTo(d) * d));
   }
-  // Dans les cailloux, il ralentit et recule son poids.
+  // Dans les cailloux, il ralentit et recule son poids ; sur les bosses, il ralentit aussi. Il freine assez tôt pour
+  // y arriver à la bonne vitesse.
   const rough = track.features.some((f) => f.type === 'rocks' && race.s > f.a - 15 && race.s < f.b)
     || track.roots.some((r) => r.s > race.s - 2 && r.s < race.s + 20);
   if (rough) vmax = Math.min(vmax, 9);
   const rollers = track.features.some((f) => f.type === 'rollers' && race.s > f.a - 25 && race.s < f.b);
   if (rollers) vmax = Math.min(vmax, 8.5);
-  // Avant un saut, juste la bonne vitesse.
+  for (const f of track.features) {
+    const slow = f.type === 'rocks' ? [9, 15] : f.type === 'rollers' ? [8.5, 25] : null;
+    if (!slow) continue;
+    const d = f.a - slow[1] - race.s;
+    if (d > 0 && d < 90) vmax = Math.min(vmax, Math.sqrt(slow[0] ** 2 + 2 * decelTo(d) * d));
+  }
+  // Avant un saut, juste la bonne vitesse (et, de plus loin, de quoi freiner jusqu'à elle).
+  for (const f of track.features) {
+    if (!f.speed || f.a - 40 <= race.s || f.a - 40 > race.s + 90) continue;
+    const d = f.a - 40 - race.s;
+    vmax = Math.min(vmax, Math.sqrt(f.speed ** 2 + 2 * decelTo(d) * d));
+  }
   const jump = track.features.find((f) => f.speed && race.s > f.a - 40 && race.s < f.a + 4);
   // (la vitesse prévue est celle de la lèvre : la montée de la lèvre en coûte un peu)
   if (jump) {
