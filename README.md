@@ -77,6 +77,23 @@ renvoie en arrière, et le chrono continue. Après une chute ou une sortie, on r
 (il y en a un tous les 150 m environ, jamais sur un saut, et jamais au-delà d'une porte qu'on n'a pas passée). Le meilleur temps est enregistré dans le navigateur avec la
 trajectoire complète : on peut ensuite courir contre son fantôme (touche F).
 
+### Le départ en ligne
+
+Avec la touche N (ou le bouton de l'écran d'aide), on part en ligne avec vingt rivaux, en rangs de trois sur une
+grille juste après l'arche ; le joueur a le dossard 21, au quatrième rang. Le chrono part au GO pour tout le monde. En
+haut à droite : la place, et l'écart avec le rival de devant et celui de derrière ; à l'arrivée, le classement. Les
+rivaux passent au travers du joueur (pas de collisions). Ce départ a son propre record. Pour l'ouvrir directement :
+`?peloton`.
+
+Chaque rival est une descente du pilote automatique, enregistrée à l'avance avec son attaque en virage, son côté de
+piste préféré et son temps de réaction (`src/sim/peloton.js`), puis rejouée au même chrono que le joueur. En l'air,
+certains font des whips ou des tables ; après la ligne, chacun freine jusqu'à sa place et pose le pied. Si une piste
+change, il faut réenregistrer son peloton (le test le signale) :
+
+```sh
+node tools/peloton.mjs [piste…]   # → public/peloton/<piste>.bin, une descente par rival, en parallèle
+```
+
 ## Les pistes
 
 **La Forêt** (884 m, 181 m de dénivelé, environ 1 min 20) : rampe de départ, schuss, virages relevés, bosses à
@@ -152,7 +169,12 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
 - `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, public, panneaux,
   le pont et le torrent.
 - `src/render/sky.js` : ciel, nuages, montagnes à l'horizon (en haute montagne : sommets enneigés, couloirs, brume).
-- `src/render/bikeModel.js` et `src/render/rider.js` : le vélo (le modèle 3D fourni) et le pilote articulé.
+- `src/render/bikeModel.js` et `src/render/rider.js` : le vélo (le modèle 3D fourni) et le pilote articulé, avec sa
+  tenue (maillot à motif, casque intégral et masque, genouillères, dossard). Ses hanches suivent le vélo avec un
+  ressort (les jambes amortissent), il reste plus droit que le vélo en virage, la tête regarde où il va, pied extérieur
+  en bas dans les virages, pied à terre à l'arrêt.
+- `src/render/peloton.js` : les rivaux du départ en ligne : pose interpolée, whips et tables, vélo allégé de près
+  (`public/models/bike-lod.glb`, fait par `tools/bike-lod.mjs`), en formes simples au loin, noms des plus proches.
 - `src/render/arms.js` : les bras et les mains du pilote, détaillés (`public/models/bras.glb`) : posés sur le cintre à
   chaque image, doigts refermés sur les poignées, maillot et gants peints d'après des zones marquées sur le modèle.
 - `src/audio.js` : le son, entièrement synthétisé.
@@ -177,6 +199,7 @@ npm test         # les pistes et la physique : freinages, virages, poids, bunny-
                  # et le pilote auto qui descend chaque piste sans tomber
 npm run shots    # lance le jeu dans Edge sans écran et enregistre des captures dans shots/
 npm run trace    # le pilote auto descend la piste et imprime son état
+node tools/film.mjs [plan…]   # tourne des plans du peloton image par image (shots/film/, animations WebP)
 ```
 
 ## Crédits

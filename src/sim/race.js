@@ -65,6 +65,15 @@ export class Race {
     if (gate.kind === 'arrivee') this.state = 'arrivee';
   }
 
+  /** Départ en ligne (le peloton) : le chrono part au GO pour tout le monde, déjà passé l'arche de départ. */
+  startMass(pose) {
+    this.state = 'course';
+    this.time = 0;
+    this.next = this.gates.findIndex((g) => g.kind !== 'depart' && g.s > this.s);
+    this.trace.length = 0;
+    if (pose) this.trace.push(pose());
+  }
+
   /** Où repartir après une chute : juste après la dernière porte passée, ou dans la cabane de départ. */
   respawnS() {
     if (this.next === 0) return this.track.spawnS;

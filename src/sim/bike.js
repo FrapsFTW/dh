@@ -264,11 +264,13 @@ export class Bike {
     return { front: (m * toRear) / (toFront + toRear), rear: (m * toFront) / (toFront + toRear) };
   }
 
-  /** Replace le vélo à l'arrêt (ou lancé à `speed` m/s) sur le tracé, à la distance `s`. */
-  placeOnTrack(s, speed = 0) {
+  /** Replace le vélo à l'arrêt (ou lancé à `speed` m/s) sur le tracé, à la distance `s` (et à `u` m du milieu). */
+  placeOnTrack(s, speed = 0, u = 0) {
     const f = this.track.sample(s);
     const ahead = this.track.sample(s + 2);
-    const y0 = this.track.trailY(s, 0), y1 = this.track.trailY(s + 2, 0);
+    const y0 = this.track.trailY(s, u), y1 = this.track.trailY(s + 2, u);
+    f.x += f.rx * u; f.z += f.rz * u;
+    ahead.x += ahead.rx * u; ahead.z += ahead.rz * u;
     const fwd = new Vector3(ahead.x - f.x, y1 - y0, ahead.z - f.z).normalize();
     const q = new Quaternion().setFromUnitVectors(new Vector3(0, 0, -1), new Vector3(fwd.x, 0, fwd.z).normalize());
     const pitch = Math.atan2(fwd.y, Math.hypot(fwd.x, fwd.z));

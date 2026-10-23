@@ -32,6 +32,7 @@ const ACTIONS = {
   settings: ['KeyG'],
   autopilot: ['KeyP'],
   ghost: ['KeyF'],
+  peloton: ['KeyN'],
   mode: ['Semicolon', 'KeyM'], // la touche M d'un clavier AZERTY, ou d'un QWERTY
 };
 // Manette au format standard (Xbox, PlayStation…).

@@ -9,6 +9,9 @@ import { createTrack } from '../src/sim/track.js';
 import { autopilot } from '../src/sim/autopilot.js';
 import { trickName } from '../src/sim/tricks.js';
 import { MAP_IDS } from '../src/sim/maps.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { ROSTER, decodePeloton, gridSlots, riderSlot, POSE, POSE_SIZE } from '../src/sim/peloton.js';
+import { TAPE_U } from '../src/sim/track.js';
 
 await initPhysics();
 
@@ -363,3 +366,24 @@ for (const mode of ['ultra', 'normal']) {
     console.log(`  pilote auto, La Grande Combe, ${mode} : ${sim.race.time.toFixed(1)} s`);
   });
 }
+
+// ---------- Le peloton ----------
+
+test('le peloton enregistré correspond à chaque piste : vingt rivaux, partis de leur place, arrivés sans sortir du balisage', () => {
+  for (const m of MAP_IDS) {
+    const file = `public/peloton/${m}.bin`;
+    if (!existsSync(file)) continue;
+    const t = tracks[m], runs = decodePeloton(new Uint8Array(readFileSync(file)));
+    const slots = gridSlots(t);
+    assert.equal(runs.length, ROSTER.length, m);
+    runs.forEach((r, i) => {
+      // Parti de sa place sur la grille (sinon la piste a changé : node tools/peloton.mjs pour réenregistrer).
+      const f = t.sample(slots[riderSlot(i)].s), u = slots[riderSlot(i)].u;
+      assert.ok(Math.hypot(r.d[0] - (f.x + f.rx * u), r.d[2] - (f.z + f.rz * u)) < 0.5, `${m}, n° ${r.num} : pas parti de sa place (piste modifiée ?)`);
+      assert.ok(r.finish > 0 && r.d[(r.count - 1) * POSE_SIZE + POSE.s] >= t.sFinish, `${m}, n° ${r.num} : pas arrivé`);
+      let worst = 0;
+      for (let j = 0; j < r.count; j++) worst = Math.max(worst, Math.abs(t.nearest(r.d[j * POSE_SIZE], r.d[j * POSE_SIZE + 2], r.d[j * POSE_SIZE + 3], 25).u));
+      assert.ok(worst < TAPE_U, `${m}, n° ${r.num} : à ${worst.toFixed(1)} m du milieu`);
+    });
+  }
+});

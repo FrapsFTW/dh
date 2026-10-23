@@ -14,6 +14,8 @@ import { createBikeModel } from './render/bikeModel.js';
 import { createCameraRig, CAMERA_SETTINGS } from './render/cameraRig.js';
 import { createPost, SPEED_FX } from './render/post.js';
 import { createSpeedParticles } from './render/speedFx.js';
+import { loadPeloton, createPeloton } from './render/peloton.js';
+import { PLAYER, gridSlots } from './sim/peloton.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -37,8 +39,10 @@ function switchMap(m) {
   q.set('carte', m);
   location.search = q.toString();
 }
-// Un record par piste et par mode (les temps ne se comparent pas d'un mode à l'autre). La forêt garde ses anciens records.
-const bestKey = (m) => (mapId === 'foret' ? `downhill.record.v3.${m}` : `downhill.record.v3.${mapId}.${m}`);
+// Un record par piste et par mode (les temps ne se comparent pas d'un mode à l'autre), et à part en départ en ligne
+// (le chrono y part au GO, sur la grille). La forêt garde ses anciens records.
+let pelotonOn = false;
+const bestKey = (m) => `${mapId === 'foret' ? `downhill.record.v3.${m}` : `downhill.record.v3.${mapId}.${m}`}${pelotonOn ? '.peloton' : ''}`;
 const loadBest = (m) => { try { return JSON.parse(localStorage.getItem(bestKey(m))) || null; } catch { return null; } };
 const saveBest = (m, b) => { try { localStorage.setItem(bestKey(m), JSON.stringify(b)); } catch { /* stockage indisponible */ } };
 const MODE_KEY = 'downhill.mode';
@@ -79,6 +83,17 @@ const ghost = createBikeModel({ ghost: true });
 ghost.group.visible = false;
 world.scene.add(ghost.group);
 await Promise.race([bikeModel.ready, new Promise((r) => setTimeout(r, 8000))]);
+// Le peloton : vingt rivaux pour le départ en ligne (?peloton, touche N), s'il a été enregistré pour cette piste.
+await loading('Le peloton prend place…', 0.85);
+const PELOTON_KEY = 'downhill.peloton';
+const pelotonRuns = await loadPeloton(mapId);
+const peloton = pelotonRuns ? createPeloton(world.scene, pelotonRuns) : null;
+const grid = gridSlots(track);
+{
+  const saved = (() => { try { return localStorage.getItem(PELOTON_KEY); } catch { return null; } })();
+  pelotonOn = !!peloton && !params.has('depart') && (params.has('peloton') ? params.get('peloton') !== '0' : saved === '1');
+}
+let goTime = null; // sim.time au GO du départ en ligne
 const camera = new THREE.PerspectiveCamera(CAMERA_SETTINGS.fov, innerWidth / innerHeight, 0.05, 4000);
 const rig = createCameraRig(camera, bikeModel, sim);
 if (params.get('cam') === 'chase') rig.setMode('chase');
@@ -151,8 +166,23 @@ gui.hide();
 const input = new Input();
 const sound = new Sound();
 let auto = params.has('autopilot');
-let phase = auto || params.has('depart') ? 'ride' : 'hut'; // hut (dans la cabane) → countdown → ride → finished
+let phase = auto || params.has('depart') ? 'ride' : 'hut'; // hut (dans la cabane, ou sur la grille) → countdown → ride → finished
 let countdown = 0, lastBeep = 0;
+/** Le joueur au départ : dans la cabane, ou à sa place sur la grille du départ en ligne. */
+function placeStart() {
+  sim.reset();
+  goTime = null;
+  if (!pelotonOn) return;
+  const g = grid[PLAYER.slot];
+  sim.bike.placeOnTrack(g.s, 0, g.u);
+  // La grille est après l'arche : le chrono partira au GO, pas en la franchissant.
+  Object.assign(sim.race, { s: g.s, u: g.u, reached: g.s, next: track.gates.findIndex((x) => x.kind !== 'depart' && x.s > g.s) });
+}
+if (pelotonOn) {
+  placeStart();
+  phase = auto ? 'countdown' : 'hut';
+  countdown = 3.999; lastBeep = 4;
+}
 let best = loadBest(mode);
 let ghostOn = !!(best && best.trace);
 let message = null, messageUntil = 0;
@@ -160,13 +190,20 @@ let lastSplits = 0, finishShownAt = 0, shownCrash = null, recordThisRun = false;
 const help = $('help');
 if (!params.has('nohelp') && !auto) help.classList.remove('hidden');
 $('loading').remove();
-$('hud').classList.remove('hidden');
+if (!params.has('nohud')) $('hud').classList.remove('hidden'); // ?nohud : l'image seule (captures)
 
 // Les repères de la barre de progression : les intermédiaires.
 const span = track.sFinish - track.sStart;
 for (const g of track.gates) if (g.kind === 'point') { const b = document.createElement('b'); b.style.left = `${((g.s - track.sStart) / span) * 100}%`; $('progBar').appendChild(b); }
 const ghostDot = document.createElement('s');
 $('progBar').appendChild(ghostDot);
+// Les rivaux sur la barre de progression : un trait à la couleur de leur maillot.
+const rivalDots = (peloton ? peloton.riders : []).map((R) => {
+  const d = document.createElement('u');
+  d.style.background = R.run.rider.kit.jersey;
+  $('progBar').appendChild(d);
+  return d;
+});
 
 function showMessage(big, small = '', seconds = 1.5, pill = false) {
   message = { big, small, pill };
@@ -193,17 +230,40 @@ function updateModeUI() {
   $('modeBlurb').textContent = MODES[mode].blurb;
   for (const b of document.querySelectorAll('[data-map]')) b.classList.toggle('on', b.dataset.map === mapId);
   $('mapBlurb').textContent = MAPS[mapId].blurb;
+  for (const b of document.querySelectorAll('[data-start]')) {
+    b.classList.toggle('on', (b.dataset.start === 'peloton') === pelotonOn);
+    b.disabled = b.dataset.start === 'peloton' && !peloton;
+  }
+  $('startBlurb').textContent = !peloton ? 'Pas encore de peloton sur cette piste.'
+    : pelotonOn ? `Départ en ligne avec ${peloton.riders.length} rivaux. Le chrono part au GO pour tout le monde ; tu as le dossard ${PLAYER.num}, au quatrième rang. Ils passent au travers de toi.`
+      : 'Seul contre le chrono, départ dans la cabane.';
+  $('rank').classList.toggle('hidden', !pelotonOn);
 }
+/** Départ en ligne ou contre la montre. La manche recommence. */
+function setPeloton(on) {
+  if (!peloton || on === pelotonOn) return;
+  pelotonOn = on;
+  try { localStorage.setItem(PELOTON_KEY, on ? '1' : '0'); } catch { /* stockage indisponible */ }
+  best = loadBest(mode);
+  ghostOn = !!(best && best.trace);
+  restart();
+  if (!auto) showMessage(on ? 'Départ en ligne' : 'Contre la montre', startHint(), 9999, true);
+  updateModeUI();
+}
+for (const b of document.querySelectorAll('[data-start]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setPeloton(b.dataset.start === 'peloton'); });
 for (const b of document.querySelectorAll('[data-map]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') switchMap(b.dataset.map); });
 for (const b of document.querySelectorAll('[data-mode]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setMode(b.dataset.mode); });
 const nextMode = () => MODE_IDS[(MODE_IDS.indexOf(mode) + 1) % MODE_IDS.length];
-const startHint = () => `Pédale ou appuie sur A pour lancer le départ · mode ${MODES[mode].name} (M ou LB pour changer)`;
+const startHint = () => (pelotonOn
+  ? `Départ en ligne : pédale ou appuie sur A, le compte à rebours part pour tout le monde · N : contre la montre`
+  : `Pédale ou appuie sur A pour lancer le départ · mode ${MODES[mode].name} (M ou LB pour changer)${peloton ? ' · N : départ en ligne' : ''}`);
 updateModeUI();
 
 function restart() {
-  sim.reset();
+  placeStart();
   rig.reset();
-  phase = auto ? 'ride' : 'hut';
+  phase = auto ? (pelotonOn ? 'countdown' : 'ride') : 'hut';
+  if (phase === 'countdown') { countdown = 3.999; lastBeep = 4; }
   lastSplits = 0; finishShownAt = 0; recordThisRun = false;
   message = null;
   $('results').classList.add('hidden');
@@ -223,7 +283,7 @@ const ghostState = {
 };
 const qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
 function updateGhost(dt) {
-  const show = ghostOn && best && best.trace && best.trace.length > 2 && phase !== 'finished';
+  const show = ghostOn && !pelotonOn && best && best.trace && best.trace.length > 2 && phase !== 'finished';
   ghost.group.visible = !!show;
   ghostDot.style.display = show ? '' : 'none';
   if (!show) return;
@@ -296,6 +356,38 @@ function onSplit() {
   while (box.children.length > 7) box.removeChild(box.firstChild);
 }
 
+// ----- Le classement du départ en ligne -----
+const shortName = (name) => `${name[0]}. ${name.split(' ').slice(1).join(' ')}`;
+const fmtGap = (g) => `${g < 0 ? '−' : '+'}${Math.abs(g).toFixed(1)}`;
+/** Tout le monde, du premier au dernier : les arrivés à leur temps, puis les autres selon la distance parcourue. */
+function standings(t) {
+  const race = sim.race;
+  const rows = peloton.progress(t).map((p) => ({ run: p.run, num: p.run.num, name: p.run.rider.name, s: p.s, finish: p.finished ? p.run.finish : null }));
+  rows.push({ me: true, num: PLAYER.num, name: 'Toi', s: race.s, finish: race.state === 'arrivee' ? race.time : null });
+  rows.sort((a, b) => (a.finish != null || b.finish != null ? (a.finish ?? Infinity) - (b.finish ?? Infinity) : b.s - a.s));
+  return rows;
+}
+let rankTimer = 0;
+function updateRank(t, dt) {
+  if (!pelotonOn) return;
+  if ((rankTimer -= dt) > 0 && !film) return;
+  rankTimer = 0.15;
+  const race = sim.race, rows = standings(t), i = rows.findIndex((r) => r.me);
+  const chip = (r) => `<i style="background:${r.run.rider.kit.jersey}">${r.num}</i>`;
+  let html = `<div class="pos"><span>PLACE</span><b class="tab">${i + 1}</b><span>/ ${rows.length}</span></div>`;
+  if (race.state === 'course' && t > 0) {
+    // Les écarts : depuis quand celui de devant est passé ici, dans combien de temps celui de derrière y sera.
+    const ahead = rows[i - 1], behind = rows[i + 1];
+    if (ahead && ahead.run) html += `<div class="gap">${chip(ahead)}<span>${shortName(ahead.name)}</span><b class="tab behindT">${fmtGap(t - peloton.timeAt(ahead.run, race.s))}</b></div>`;
+    if (behind && behind.run) {
+      const g = peloton.timeAt(behind.run, race.s) - t;
+      if (Number.isFinite(g)) html += `<div class="gap">${chip(behind)}<span>${shortName(behind.name)}</span><b class="tab aheadT">${fmtGap(-g)}</b></div>`;
+    }
+  }
+  $('rank').innerHTML = html;
+  peloton.progress(t).forEach((p, k) => { rivalDots[k].style.left = `${Math.max(0, Math.min(1, (p.s - track.sStart) / span)) * 100}%`; });
+}
+
 function onFinish() {
   const race = sim.race;
   const record = !best || race.time < best.time;
@@ -320,7 +412,26 @@ function onFinish() {
   rows.push(['Figures', tricks.length ? tricks.join(', ') : '–']);
   rows.push(['Piste', MAPS[mapId].name]);
   rows.push(['Mode', MODES[mode].name]);
-  $('resRows').innerHTML = rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
+  let classement = '';
+  if (pelotonOn) {
+    // Le classement final : on connaît déjà le temps de chaque rival.
+    const all = peloton.riders.map((R) => ({ num: R.run.num, name: R.run.rider.name, t: R.run.finish, kit: R.run.rider.kit.jersey }));
+    all.push({ num: PLAYER.num, name: 'Toi', t: race.time, kit: '#b3352b', me: true });
+    all.sort((a, b) => a.t - b.t);
+    const pos = all.findIndex((r) => r.me);
+    $('resTitle').textContent = `${recordThisRun ? 'NOUVEAU RECORD · ' : ''}PLACE ${pos + 1} SUR ${all.length}`;
+    const keep = new Set([0, 1, 2, pos - 1, pos, pos + 1].filter((k) => k >= 0 && k < all.length));
+    let lastK = -1;
+    classement = '<div class="classement">';
+    for (const k of [...keep].sort((a, b) => a - b)) {
+      if (k > lastK + 1) classement += '<div class="dots">⋯</div>';
+      const r = all[k];
+      classement += `<div class="crow${r.me ? ' me' : ''}"><span class="p tab">${k + 1}</span><i style="background:${r.kit}">${r.num}</i><span class="nm">${r.me ? 'Toi' : r.name}</span><b class="tab">${fmt(r.t)}</b><span class="d tab">${k ? `+${(r.t - all[0].t).toFixed(2)}` : ''}</span></div>`;
+      lastK = k;
+    }
+    classement += '</div>';
+  }
+  $('resRows').innerHTML = classement + rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
   finishShownAt = performance.now() + 1800;
 }
 
@@ -345,9 +456,14 @@ function adaptResolution(dt) {
 
 // ----- La boucle -----
 let acc = 0, last = performance.now(), clock = 0;
+// Mode film (?film, pour tools/film.mjs) : le jeu n'avance que sur demande, d'un pas fixe à chaque image.
+const film = params.has('film');
+let filmDt = 0, tv = null;
+// La mise en scène des captures : temps du peloton imposé, joueur immobile ou caché.
+const stage = { pelT: null, freeze: false, hidePlayer: false };
 function frame(now) {
   // En mode capture (rendu logiciel très lent), on laisse le jeu avancer plus vite que les images.
-  const dt = Math.max(0, Math.min(params.has('shot') ? 0.5 : 0.1, (now - last) / 1000));
+  const dt = film ? filmDt : Math.max(0, Math.min(params.has('shot') ? 0.5 : 0.1, (now - last) / 1000));
   last = now;
   adaptResolution(dt);
   clock += dt;
@@ -359,6 +475,10 @@ function frame(now) {
   if (actions.ghost) { ghostOn = !ghostOn; showMessage('', ghostOn ? (best && best.trace ? 'Fantôme du record affiché' : 'Pas encore de record à rejouer') : 'Fantôme masqué', 1.5, true); if (phase === 'finished') restart(); }
   if (actions.autopilot) { auto = !auto; if (phase === 'hut') phase = 'ride'; showMessage('', auto ? 'Pilote automatique' : 'À toi', 1.5, true); }
   if (actions.restart) restart();
+  if (actions.peloton) {
+    if (phase === 'hut' || phase === 'finished') setPeloton(!pelotonOn);
+    else showMessage('', 'Le départ se choisit avant la manche (Entrée pour recommencer)', 1.8, true);
+  }
   if (actions.mode) {
     if (phase === 'hut' || phase === 'finished') setMode(nextMode());
     else showMessage('', 'Le mode se change avant le départ (Entrée pour recommencer)', 1.8, true);
@@ -373,7 +493,11 @@ function frame(now) {
     countdown -= dt;
     const n = Math.ceil(countdown);
     if (n < lastBeep && n >= 0) { lastBeep = n; sound.beep(n === 0); if (n > 0) showMessage(String(n), '', 0.9); }
-    if (countdown <= 0) { phase = 'ride'; showMessage('GO', '', 0.8); }
+    if (countdown <= 0) {
+      phase = 'ride';
+      showMessage('GO', '', 0.8);
+      if (pelotonOn) { sim.race.startMass(); goTime = sim.time; }
+    }
   }
 
   // La physique, à pas fixe.
@@ -383,7 +507,8 @@ function frame(now) {
   const maxSteps = params.has('shot') ? 60 : 12;
   while (acc >= STEP && n < maxSteps) {
     let inp;
-    if (phase === 'ride') inp = auto ? autopilot(sim, { trick: params.get('figure') }) : control;
+    if (stage.freeze) inp = HOLD;
+    else if (phase === 'ride') inp = auto ? autopilot(sim, { trick: params.get('figure') }) : control;
     else if (phase === 'finished') inp = STOP;
     else inp = HOLD;
     sim.step(inp);
@@ -415,6 +540,24 @@ function frame(now) {
   bikeModel.update(st, dt, rig.mode === 'fp');
   updateGhost(dt);
   rig.update(st, dt, input.look);
+  // Caméra de bord de piste (captures) : posée, elle suit un rival ou le joueur. Posée avant les rivaux (qui en ont
+  // besoin pour leur niveau de détail), tournée vers sa cible après.
+  if (tv) camera.position.set(...tv.pos);
+  // Les rivaux, au même instant que le vélo affiché (entre deux pas de physique).
+  const pelT = stage.pelT != null ? stage.pelT : goTime === null ? 0 : Math.max(0, sim.time - goTime - (1 - acc / STEP) * STEP);
+  bikeModel.group.visible = !stage.hidePlayer;
+  if (peloton) {
+    if (pelotonOn) peloton.update(pelT, dt, camera);
+    else peloton.setVisible(false);
+  }
+  if (tv) {
+    const target = tv.follow === 'joueur' ? st.position : peloton.riders.find((R) => R.run.num === tv.follow).state.position;
+    tv.look = tv.look ? tv.look.lerp(target, 1 - Math.exp(-dt * 8)) : target.clone();
+    camera.lookAt(tv.look.x, tv.look.y + 1, tv.look.z);
+    camera.fov = tv.fov || 40;
+    camera.updateProjectionMatrix();
+  }
+  updateRank(pelT, dt);
   world.update(st.position, camera, clock);
   drawStartClock();
   drawFinishScreen(dt);
@@ -423,7 +566,7 @@ function frame(now) {
   const nearWater = creek ? 1 - THREE.MathUtils.smoothstep(distToPolyline(creek, st.position.x, st.position.z), 6, 45) : 0;
   sound.update(st, nearFinish, dt, nearWater);
   particles.update(camera, st.velocity, dt);
-  post.render(st.speed, dt);
+  if (!stage.noRender) post.render(st.speed, dt);
 
   $('chrono').textContent = fmt(race.state === 'pret' ? 0 : race.time);
   $('best').textContent = best ? `Record ${MODES[mode].name} ${fmt(best.time)}` : '';
@@ -450,14 +593,29 @@ function frame(now) {
   $('surface').textContent = `Sol : ${wf.surface ? wf.surface.name : '–'}${wf.locked ? ' · avant bloquée' : ''}${wr.locked ? ' · arrière bloquée' : ''}${!wf.locked && wf.sliding ? ' · l\'avant glisse' : ''}${!wr.locked && wr.sliding ? ' · l\'arrière glisse' : ''}`;
   $('pad').textContent = input.padName ? `Manette détectée : ${input.padName}` : 'Branche une manette et appuie sur un bouton pour qu\'elle soit détectée.';
 
-  requestAnimationFrame(frame);
+  if (!film) requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+if (!film) requestAnimationFrame(frame);
 
 // Pour les captures automatiques (tools/shots.mjs).
 window.__game = {
   sim, rig,
   setAutopilot(v) { auto = v; if (phase === 'hut') phase = 'ride'; },
   setMode,
+  peloton,
+  /** Mode film : avance le jeu de dt secondes et dessine une image. */
+  advance(dt) { filmDt = dt; frame(performance.now()); },
+  /** Mode film : avance de `seconds` sans rien dessiner (pour arriver vite au bon moment). */
+  fastForward(seconds, dt = 0.1) {
+    stage.noRender = true;
+    for (let t = 0; t < seconds; t += dt) { filmDt = dt; frame(performance.now()); }
+    stage.noRender = false;
+  },
+  /** Caméra de bord de piste : { pos: [x, y, z], follow: dossard ou 'joueur', fov }, ou null. */
+  setTV(v) { tv = v; },
+  stage,
+  /** Affiche le peloton même avec ?depart (captures). */
+  showPeloton() { if (peloton) { pelotonOn = true; updateModeUI(); } },
+  start() { if (phase === 'hut') { phase = 'countdown'; countdown = 3.999; lastBeep = 4; help.classList.add('hidden'); message = null; } },
   state: () => ({ map: mapId, mode, tricks: sim.tricks.landed.slice(), time: sim.race.time, raceState: sim.race.state, s: sim.race.s, speed: sim.bike.state().speed, crashes: sim.race.crashes, crashed: !!sim.bike.crashed }),
 };

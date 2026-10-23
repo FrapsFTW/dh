@@ -63,64 +63,95 @@ function placeholderBike() {
   return root;
 }
 
-/** ghost : un vélo translucide (le fantôme du record). */
-export function createBikeModel({ ghost = false } = {}) {
+// Les modèles chargés une fois pour toutes (chaque vélo en fait une copie qui partage maillages et textures).
+const models = new Map();
+function loadModel(file) {
+  if (!models.has(file)) {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    models.set(file, loader.loadAsync(`${import.meta.env ? import.meta.env.BASE_URL : '/'}models/${file}`).then((g) => g.scene));
+  }
+  return models.get(file).then((scene) => scene.clone(true));
+}
+
+/**
+ * ghost : un vélo translucide (le fantôme du record). lod : le vélo allégé de près et le vélo en formes simples au
+ * loin (les rivaux du peloton, voir setNear). kit, number, stance : la tenue, le dossard et le pied devant du pilote.
+ */
+export function createBikeModel({ ghost = false, lod = false, kit, number = null, stance = 1 } = {}) {
   const group = new THREE.Group();
-  group.name = ghost ? 'fantome' : 'velo';
-  let bike = placeholderBike();
-  group.add(bike);
-  const rider = createRider({ detailedArms: !ghost });
+  group.name = ghost ? 'fantome' : lod ? 'rival' : 'velo';
+  const rider = createRider({ detailedArms: !ghost && !lod, kit, number, stance });
   group.add(rider.group);
   const ghostMat = new THREE.MeshStandardMaterial({ color: lin('#9fd6ff'), emissive: lin('#2a6ea8'), transparent: true, opacity: 0.32, depthWrite: false, roughness: 0.5 });
   const ghostify = (o) => o.traverse((m) => { if (m.isMesh) { m.material = ghostMat; m.castShadow = false; m.receiveShadow = false; } });
-  if (ghost) ghostify(group);
 
-  let parts = null;
-  const findParts = () => {
-    const get = (n) => bike.getObjectByName(n);
-    parts = { bras: get('bras'), direction: get('direction'), fourreaux: get('fourreaux'), roueAvant: get('roueAvant'), roueArriere: get('roueArriere') };
+  // Un vélo et ses pièces mobiles.
+  const variant = (root) => {
+    const get = (n) => root.getObjectByName(n);
+    const parts = { root, bras: get('bras'), direction: get('direction'), fourreaux: get('fourreaux'), roueAvant: get('roueAvant'), roueArriere: get('roueArriere') };
     parts.forkRest = parts.fourreaux.position.clone();
     // Le bras oscillant tourne autour de son pivot : la roue arrière monte en décrivant un arc.
     parts.armLength = parts.roueArriere.position.length();
+    return parts;
   };
-  findParts();
+  const simple = variant(placeholderBike());
+  group.add(simple.root);
+  let detailed = null, near = true;
+  const active = () => (detailed && (near || !lod) ? detailed : simple);
+  if (ghost) ghostify(group);
 
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  const ready = loader.loadAsync(`${import.meta.env ? import.meta.env.BASE_URL : '/'}models/bike.glb`).then((gltf) => {
-    const model = gltf.scene;
+  const ready = loadModel(lod ? 'bike-lod.glb' : 'bike.glb').then((model) => {
     model.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
-      o.receiveShadow = true;
-      if (o.material) { o.material.envMapIntensity = 1; o.material.side = THREE.FrontSide; }
+      o.receiveShadow = !lod;
+      if (o.material && !lod) { o.material.envMapIntensity = 1; o.material.side = THREE.FrontSide; }
     });
-    group.remove(bike);
-    bike = model;
-    group.add(bike);
-    if (ghost) ghostify(bike);
-    findParts();
+    if (ghost) ghostify(model);
+    detailed = variant(model);
+    group.add(model);
     return true;
   }).catch((e) => { console.warn('Modèle du vélo indisponible, vélo de remplacement :', e.message); return false; });
 
   const steerAxis = new THREE.Vector3(G.forkAxis.x, G.forkAxis.y, G.forkAxis.z).normalize();
+  const Z = new THREE.Vector3(0, 0, 1), qLean = new THREE.Quaternion(), tmp = new THREE.Vector3();
   return {
     group,
     rider,
     ready,
     get eye() { return rider.eye; },
-    update(state, dt, firstPerson) {
+    /** Les rivaux : le vélo détaillé de près, en formes simples au loin (et le pilote sans ses petits détails). */
+    setNear(v) {
+      if (v === near) return;
+      near = v;
+      rider.setDetail(v);
+    },
+    /** style : { q, pivot }, le vélo seul tourné autour des hanches en l'air (voir rider.js), ou null. */
+    update(state, dt, firstPerson, style = null) {
       group.position.copy(state.position);
       group.quaternion.copy(state.quaternion);
+      // Arrêté, pied gauche à terre : le vélo penche un peu de ce côté (autour de la ligne des roues, qui restent au sol).
+      if (rider.footDown > 0.001) group.quaternion.multiply(qLean.setFromAxisAngle(Z, rider.footDown * 0.09));
+      const P = active();
+      if (detailed) detailed.root.visible = P === detailed;
+      simple.root.visible = P === simple;
+      if (style) {
+        P.root.quaternion.copy(style.q);
+        P.root.position.copy(style.pivot).sub(tmp.copy(style.pivot).applyQuaternion(style.q));
+      } else if (P.root.position.lengthSq() || P.root.quaternion.w < 1) {
+        P.root.position.set(0, 0, 0);
+        P.root.quaternion.set(0, 0, 0, 1);
+      }
       const [wf, wr] = state.wheels;
       // La direction tourne autour de son axe (braquer à droite : rotation négative autour de l'axe, qui monte).
-      parts.direction.quaternion.setFromAxisAngle(steerAxis, -state.steer);
+      P.direction.quaternion.setFromAxisAngle(steerAxis, -state.steer);
       // Les fourreaux et la roue avant remontent le long de la fourche quand elle s'enfonce.
-      parts.fourreaux.position.copy(parts.forkRest).addScaledVector(steerAxis, wf.contact ? wf.x : 0);
-      parts.bras.rotation.x = -Math.asin(THREE.MathUtils.clamp((wr.contact ? wr.x : 0) / parts.armLength, -1, 1));
+      P.fourreaux.position.copy(P.forkRest).addScaledVector(steerAxis, wf.contact ? wf.x : 0);
+      P.bras.rotation.x = -Math.asin(THREE.MathUtils.clamp((wr.contact ? wr.x : 0) / P.armLength, -1, 1));
       // Les roues tournent (vers l'avant : le haut de la roue part vers -z).
-      parts.roueAvant.rotation.x = -wf.spinAngle;
-      parts.roueArriere.rotation.x = -wr.spinAngle;
-      rider.update(state, dt, firstPerson);
+      P.roueAvant.rotation.x = -wf.spinAngle;
+      P.roueArriere.rotation.x = -wr.spinAngle;
+      rider.update(state, dt, firstPerson, style);
     },
   };
 }

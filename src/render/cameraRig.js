@@ -55,7 +55,8 @@ export function createCameraRig(camera, bikeModel, sim) {
         const crashed = !!state.crashed;
         const into = crashed ? 0 : THREE.MathUtils.clamp(wrap(trailYaw - bikeYaw), -0.5, 0.5) * S.lookAhead;
         // Regard libre : il revient doucement quand on lâche le stick.
-        lookYaw += (look.x * 1.2 - lookYaw) * Math.min(1, dt * (Math.abs(look.x) > 0.05 ? 6 : 2.5));
+        // (Un lacet positif tourne la tête vers la gauche : stick à droite, lacet négatif.)
+        lookYaw += (-look.x * 1.2 - lookYaw) * Math.min(1, dt * (Math.abs(look.x) > 0.05 ? 6 : 2.5));
         lookPitch += (-look.y * 0.6 - lookPitch) * Math.min(1, dt * (Math.abs(look.y) > 0.05 ? 6 : 2.5));
         const wantYaw = bikeYaw + into + lookYaw;
         const wantPitch = bikePitch * S.pitchFollow - (S.lookDown * Math.PI) / 180 + lookPitch;

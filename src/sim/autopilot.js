@@ -2,6 +2,8 @@
 // Il sert aux tests (la piste est-elle faisable ?) et à la démo (touche P).
 // Il a exactement les mêmes commandes que le joueur : la courbe voulue, les freins, le pédalage, le poids.
 // opts.trick ('backflip', 'frontflip', '360') : il tente une figure au saut d'arrivée (démo du mode Normal).
+// opts.pace (1 par défaut) : plus ou moins d'attaque en virage et dans les zones lentes (les rivaux du peloton).
+// opts.line(s) : l'écart au milieu de la piste qu'il vise à la distance s, en mètres (sa trajectoire à lui).
 
 import { clamp, G } from './bike.js';
 import { STEP } from './world.js';
@@ -21,6 +23,8 @@ export function autopilot(sim, opts = {}) {
   // Poursuite d'un point du tracé, assez proche pour ne pas couper les virages.
   const Ld = 5 + v * 0.6;
   const look = track.sample(race.s + Ld);
+  if (opts.line) { const u = opts.line(race.s + Ld); look.x += look.rx * u; look.z += look.rz * u; }
+  const pace = opts.pace || 1;
   const dx = look.x - st.position.x, dz = look.z - st.position.z;
   const err = Math.atan2(fx * dz - fz * dx, fx * dx + fz * dz); // > 0 : le point est à droite
   const curvature = (2 * Math.sin(err)) / Math.max(Math.hypot(dx, dz), 1);
@@ -39,7 +43,7 @@ export function autopilot(sim, opts = {}) {
   for (let d = 0; d < 90; d += 2) {
     const f = track.sample(race.s + d);
     const k = Math.abs(f.k);
-    const lat = TURN_GRIP + Math.max(0, Math.sign(f.k) * f.bank) * 0.6; // un virage relevé se passe plus vite
+    const lat = TURN_GRIP * pace + Math.max(0, Math.sign(f.k) * f.bank) * 0.6; // un virage relevé se passe plus vite
     const vTurn = Math.sqrt((lat * G) / Math.max(k, 1e-3));
     vmax = Math.min(vmax, Math.sqrt(vTurn * vTurn + 2 * decelTo(d) * d));
   }
@@ -47,11 +51,11 @@ export function autopilot(sim, opts = {}) {
   // y arriver à la bonne vitesse.
   const rough = track.features.some((f) => f.type === 'rocks' && race.s > f.a - 15 && race.s < f.b)
     || track.roots.some((r) => r.s > race.s - 2 && r.s < race.s + 20);
-  if (rough) vmax = Math.min(vmax, 9);
+  if (rough) vmax = Math.min(vmax, 9 * pace);
   const rollers = track.features.some((f) => f.type === 'rollers' && race.s > f.a - 25 && race.s < f.b);
-  if (rollers) vmax = Math.min(vmax, 8.5);
+  if (rollers) vmax = Math.min(vmax, 8.5 * pace);
   for (const f of track.features) {
-    const slow = f.type === 'rocks' ? [9, 15] : f.type === 'rollers' ? [8.5, 25] : null;
+    const slow = f.type === 'rocks' ? [9 * pace, 15] : f.type === 'rollers' ? [8.5 * pace, 25] : null;
     if (!slow) continue;
     const d = f.a - slow[1] - race.s;
     if (d > 0 && d < 90) vmax = Math.min(vmax, Math.sqrt(slow[0] ** 2 + 2 * decelTo(d) * d));

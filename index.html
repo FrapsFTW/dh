@@ -42,6 +42,26 @@
     #progress .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #fff; }
     #progress .bar b { position: absolute; top: -4px; width: 2px; height: 14px; background: rgba(255,255,255,.7); }
     #progress .bar s { position: absolute; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.35); margin-left: -5px; border: 2px solid rgba(255,255,255,.75); }
+    #progress .bar u { position: absolute; top: -2px; width: 3px; height: 10px; margin-left: -1px; opacity: .9; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+    /* Le départ en ligne : la place, et les écarts avec celui de devant et celui de derrière. */
+    #rank { position: absolute; top: 64px; right: 22px; width: 240px; display: flex; flex-direction: column; gap: 3px; }
+    #rank .pos { display: flex; align-items: baseline; gap: 8px; background: var(--panel2); padding: 4px 12px; justify-content: flex-end; }
+    #rank .pos span { font-size: 12px; font-weight: 800; color: var(--muted); letter-spacing: .08em; }
+    #rank .pos b { font-size: 30px; font-weight: 900; line-height: 1.05; }
+    #rank .gap { display: flex; align-items: center; gap: 8px; background: var(--panel); font-size: 13px; font-weight: 700; }
+    #rank .gap span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    #rank i, .classement i { font-style: normal; font-size: 12px; font-weight: 900; min-width: 26px; text-align: center; padding: 4px 3px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+    #rank .gap b { padding: 4px 10px; min-width: 52px; text-align: right; }
+    .behindT { color: var(--behind); } .aheadT { color: var(--ahead); }
+    .classement { margin-bottom: 14px; }
+    .classement .crow { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 15px; }
+    .classement .crow.me { background: rgba(232,64,42,.22); }
+    .classement .p { width: 26px; text-align: right; font-weight: 800; color: var(--muted); }
+    .classement .nm { flex: 1; }
+    .classement .d { width: 64px; text-align: right; color: var(--muted); font-size: 13px; }
+    .classement .dots { text-align: center; color: var(--muted); line-height: 1; }
+    #startBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
+    .modes button:disabled { opacity: .4; cursor: default; }
     #progress .lbl { display: flex; justify-content: space-between; font-size: 12px; margin-top: 6px; color: var(--muted); text-shadow: 0 1px 2px rgba(0,0,0,.6); font-weight: 600; }
 
     /* La vitesse, en bas à droite. */
@@ -92,6 +112,7 @@
     <div id="splitBox"></div>
     <div id="best" class="tab"></div>
     <div id="progress"><div class="bar" id="progBar"><i id="progFill"></i></div><div class="lbl"><span id="progLeft">Départ</span><span id="progRight"></span></div></div>
+    <div id="rank" class="hidden"></div>
     <div id="message"></div>
     <div id="speed"><div class="v tab" id="speedV">0</div><div class="u" id="speedU">KM/H</div></div>
     <div id="inputs">
@@ -111,6 +132,8 @@
       <div id="mapBlurb"></div>
       <div class="modes"><button data-mode="normal">Normal</button><button data-mode="ultra">Ultra-réaliste</button></div>
       <div id="modeBlurb"></div>
+      <div class="modes"><button data-start="seul">Contre la montre</button><button data-start="peloton">Départ en ligne</button></div>
+      <div id="startBlurb"></div>
       <table>
         <tr><th></th><th>Manette (recommandée)</th><th>Clavier</th></tr>
         <tr><td>Tourner</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd></td></tr>
@@ -124,6 +147,7 @@
         <tr><td>Recommencer la manche</td><td><kbd>Start</kbd></td><td><kbd>Entrée</kbd></td></tr>
         <tr><td>Vue extérieure · fantôme du record</td><td><kbd>Select</kbd></td><td><kbd>C</kbd> · <kbd>F</kbd></td></tr>
         <tr><td>Changer de mode (avant le départ)</td><td><kbd>LB</kbd></td><td><kbd>M</kbd></td></tr>
+        <tr><td>Départ en ligne ou contre la montre</td><td></td><td><kbd>N</kbd></td></tr>
         <tr><td>Réglages · pilote automatique · aide</td><td></td><td><kbd>G</kbd> · <kbd>P</kbd> · <kbd>H</kbd></td></tr>
       </table>
       <div class="tips">Conseils de pilote : freine avant le virage, pas dedans. Recule ton poids dans les pentes raides et quand tu freines fort. Les virages relevés se prennent bien plus vite que les plats. Comprime-toi avant une bosse et relâche au sommet pour sauter plus loin. Ne freine pas en l'air : la roue se bloque et tu atterris en glissant.<br>Figures : le saut d'arrivée est taillé pour (plus d'une seconde en l'air). Groupé, tu tournes plus vite ; lâche le bouton pour t'ouvrir et ralentir la rotation avant de te poser. En Normal, le pilote finit la rotation si tu as lâché au bon moment ; en Ultra-réaliste, c'est à toi de l'arrêter (stick dans l'autre sens, toujours groupé) et de te poser droit.</div>
