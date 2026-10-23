@@ -1,6 +1,7 @@
 // Le monde physique : le sol (relief + piste), les arbres, le vélo, et la boucle à pas fixe.
 
 import RAPIER from '@dimforge/rapier3d-compat';
+import { Vector3, Quaternion } from 'three';
 import { createTrack } from './track.js';
 import { Bike, GROUPS, DEFAULT_PARAMS } from './bike.js';
 import { Race } from './race.js';
@@ -54,8 +55,28 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
     return [t.x, t.y, t.z, r.x, r.y, r.z, r.w, bike.steer, wf.x, wr.x, bike.lean || 0, bike.crouch, bike.hips.z];
   };
 
+  // La pose d'avant le dernier pas, pour l'affichage entre deux pas (null : vélo qui vient d'être replacé).
+  let prev = null;
+  const savePrev = () => {
+    const t = bike.body.translation(), r = bike.body.rotation();
+    prev = { position: new Vector3(t.x, t.y, t.z), quaternion: new Quaternion(r.x, r.y, r.z, r.w) };
+  };
+
   const sim = {
     track, world, bike, race, tricks, params, terrain, ribbon, time: 0, mode: mode || 'ultra',
+    /**
+     * L'état du vélo pour l'affichage, alpha (0 à 1) de l'avant-dernier pas au dernier. La physique avance par pas
+     * de 1/120 s, l'écran à son rythme (60, 144 Hz…) : sans ça, certaines images montreraient le vélo immobile et
+     * d'autres le verraient bondir, et toute la vue saccaderait.
+     */
+    renderState(alpha) {
+      const st = bike.state();
+      if (prev) {
+        st.position.lerpVectors(prev.position, st.position, alpha);
+        st.quaternion.slerpQuaternions(prev.quaternion, st.quaternion, alpha);
+      }
+      return st;
+    },
     /** Change de mode : les réglages et la tolérance hors balisage. */
     setMode(m) {
       sim.mode = m;
@@ -67,15 +88,18 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
       race.reset();
       tricks.reset();
       bike.placeOnTrack(track.spawnS);
+      prev = null;
     },
     respawn() {
       bike.placeOnTrack(race.respawnS());
+      prev = null;
       race.onRespawn();
       tricks.air = null;
       tricks.pending = null;
     },
     /** Un pas de physique de 1/120 s. */
     step(input) {
+      savePrev();
       bike.applyForces(input, STEP);
       world.step(events);
       let riderHit = null;

@@ -146,6 +146,9 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
 - `src/render/post.js` et `src/render/speedFx.js` : la sensation de vitesse, de 25 à 55 km/h : flou radial et
   légère aberration chromatique sur les bords, vision en tunnel, poussière qui file. La caméra vibre à haute vitesse
   (plus dans les cailloux) et le champ de vision s'ouvre ; le vent gronde dans le casque. Tout se règle avec G.
+- `src/render/cameraRig.js` : la vue subjective. La tête amortit les coups que prend le cadre (réceptions, rollers,
+  pierriers) et ne suit le vélo que pendant une vraie figure. L'affichage est interpolé entre deux pas de physique
+  (`sim.renderState`), pour rester fluide sur un écran à 144 Hz.
 - `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, public, panneaux,
   le pont et le torrent.
 - `src/render/sky.js` : ciel, nuages, montagnes à l'horizon (en haute montagne : sommets enneigés, couloirs, brume).

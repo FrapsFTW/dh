@@ -136,6 +136,7 @@ fCam.add(CAMERA_SETTINGS, 'lookAhead', 0, 1.5, 0.05).name('Regard vers la sortie
 fCam.add(CAMERA_SETTINGS, 'lookDown', -5, 25, 1).name('Regard vers le bas (°)');
 fCam.add(CAMERA_SETTINGS, 'shake', 0, 1.5, 0.05).name('Secousses');
 fCam.add(CAMERA_SETTINGS, 'buzz', 0, 2, 0.05).name('Vibration à haute vitesse');
+fCam.add(CAMERA_SETTINGS, 'stabilize', 0, 1, 0.05).name('Stabilisation de la tête');
 const fFx = gui.addFolder('Effets de vitesse');
 fFx.add(SPEED_FX, 'from', 10, 50, 1).name('À partir de (km/h)');
 fFx.add(SPEED_FX, 'to', 30, 90, 1).name('Au maximum à (km/h)');
@@ -410,7 +411,7 @@ function frame(now) {
   if (phase === 'finished' && finishShownAt && now > finishShownAt) { $('results').classList.remove('hidden'); finishShownAt = 0; }
 
   // Affichage.
-  const st = sim.bike.state();
+  const st = sim.renderState(acc / STEP);
   bikeModel.update(st, dt, rig.mode === 'fp');
   updateGhost(dt);
   rig.update(st, dt, input.look);
