@@ -43,7 +43,11 @@ test('chaque piste est faisable : virages assez larges, portes dans l\'ordre, au
     for (let i = 1; i < t.gates.length; i++) assert.ok(t.gates[i].s > t.gates[i - 1].s);
     assert.equal(t.gates[0].kind, 'depart');
     assert.equal(t.gates.at(-1).kind, 'arrivee');
-    for (const tree of t.trees) assert.ok(t.nearest(tree.x, tree.z, null, 0, 2).dist > 5, `${m} : un arbre est sur la piste`);
+    // (à plus de 5 m de l'axe ; dans un passage étroit, les troncs qui le bordent restent derrière la rubalise)
+    for (const tree of t.trees) {
+      const p = t.nearest(tree.x, tree.z, null, 0, 2);
+      assert.ok(p.dist > (t.narrowAt(p.s).k > 0 ? t.tapeAt(p.s) + tree.r : 5), `${m} : un arbre est sur la piste, à ${p.dist.toFixed(1)} m de l'axe`);
+    }
   }
 });
 
@@ -419,6 +423,27 @@ test("L'Avalanche : 40 m de large sur le glacier, la remontée monte vraiment, d
   let riser = 0;
   for (let s = st.a; s < st.b; s += 0.05) riser = Math.max(riser, t.trailY(s, 0) - t.trailY(s + 0.05, 0));
   assert.ok(riser > 0.1 && riser < 0.35, `contremarche de ${riser.toFixed(2)} m`);
+});
+
+test("L'Avalanche : quatre passages étroits, bordés de blocs ou de troncs, jamais sur la trace", () => {
+  const t = tracks.avalanche;
+  assert.equal(t.narrows.length, 4);
+  for (const w of t.narrows) {
+    const mid = (w.a + w.b) / 2;
+    assert.ok(t.tapeAt(mid) < 1.5, `${w.name} : rubalise à ${t.tapeAt(mid).toFixed(2)} m`);
+    assert.ok(t.trailHalfAt(mid) < 1, `${w.name} : trace de ${(2 * t.trailHalfAt(mid)).toFixed(2)} m`);
+    // La haie : de chaque côté, derrière la rubalise, et rien sur la trace.
+    const edge = w.edge === 'blocs'
+      ? t.boulders.filter((b) => b.s > w.a && b.s < w.b)
+      : t.trees.filter((tr) => { const p = t.nearest(tr.x, tr.z, null, 0, 3); return p.s > w.a && p.s < w.b && p.dist < 4; });
+    assert.ok(edge.length > 20, `${w.name} : ${edge.length} obstacles`);
+    for (const o of edge) {
+      const p = t.nearest(o.x, o.z, null, 0, 3);
+      assert.ok(p.dist - (o.r || 0) > t.tapeAt(p.s) - 0.05, `${w.name} : un obstacle à ${p.dist.toFixed(2)} m de l'axe`);
+    }
+  }
+  // Ailleurs, la rubalise est à sa place habituelle.
+  assert.ok(Math.abs(t.tapeAt(2600) - 3.4) < 1e-6);
 });
 
 test("L'Avalanche : les maisons du village sont hors du balisage", () => {

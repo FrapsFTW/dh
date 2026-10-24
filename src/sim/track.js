@@ -358,8 +358,21 @@ export function createTrack(seed = 7, mapId = 'foret') {
   ];
   const zoneAt = (s) => zones.find((z) => s >= z.a && s <= z.b) || null;
 
-  // La largeur balisée : la rubalise à TAPE_U, sauf sur les tronçons larges (le glacier), balisés de piquets plus loin.
+  // La largeur balisée : la rubalise à TAPE_U, sauf sur les tronçons larges (le glacier), balisés de piquets plus loin,
+  // et dans les passages étroits, où la rubalise serre la trace (un single entre les arbres ou les blocs).
   const wides = layout.wide || [];
+  const narrows = layout.narrow || [];
+  const NARROW_RAMP = 8; // m : la rubalise se resserre sur cette distance
+  /** 1 au cœur d'un passage étroit, 0 hors des passages étroits ; et sa demi-largeur. */
+  function narrowAt(s) {
+    let k = 0, half = TAPE_U;
+    for (const w of narrows) {
+      if (s < w.a - NARROW_RAMP || s > w.b + NARROW_RAMP) continue;
+      const kk = smoothstep(w.a - NARROW_RAMP, w.a, s) * (1 - smoothstep(w.b, w.b + NARROW_RAMP, s));
+      if (kk > k) { k = kk; half = w.half; }
+    }
+    return { k, half };
+  }
   /** La demi-largeur balisée à la distance s. */
   function tapeAt(s) {
     let t = TAPE_U;
@@ -368,8 +381,12 @@ export function createTrack(seed = 7, mapId = 'foret') {
       const k = smoothstep(w.a, w.a + (w.open ?? 10), s) * (1 - smoothstep(w.b - (w.close ?? 10), w.b, s));
       t = Math.max(t, TAPE_U + (w.half - TAPE_U) * k);
     }
+    const nw = narrowAt(s);
+    if (nw.k > 0) t += (Math.min(t, nw.half) - t) * nw.k;
     return t;
   }
+  /** La demi-largeur de la trace (la partie roulée, tassée) : plus fine dans un passage étroit. */
+  const trailHalfAt = (s) => { const nw = narrowAt(s); return TRAIL_HALF + (Math.max(0.75, nw.half - 0.45) - TRAIL_HALF) * nw.k; };
   // Sur un tronçon large, la trace damée fait plus que la piste habituelle.
   const traceAt = (s) => Math.max(TRAIL_HALF - 0.3, Math.min(5, tapeAt(s) - 3));
   /** La vitesse que s'autorise le pilote auto à la distance s (13 m/s, sauf là où la carte lâche les freins). */
@@ -378,7 +395,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
   function surfaceAt(x, z) {
     const p = nearest(x, z, null, 0, wides.length ? 4 : 1);
     const s = p.s;
-    if (!p.inside || p.dist > TRAIL_HALF + 0.9) {
+    const th = trailHalfAt(s);
+    if (!p.inside || p.dist > th + 0.9) {
       // À côté de la piste : l'herbe, ou ce qui couvre tout le tronçon (la neige du glacier).
       const zone = Number.isFinite(p.dist) ? zoneAt(s) : null;
       return zone && zone.off && p.dist < tapeAt(s) + 6 ? (p.dist < traceAt(s) ? zone.surface : zone.off) : SURFACES.herbe;
@@ -392,7 +410,7 @@ export function createTrack(seed = 7, mapId = 'foret') {
     const zone = zoneAt(s);
     if (zone && zone.whole) return zone.surface;
     if (zone && zone.off) return p.dist < traceAt(s) ? zone.surface : zone.edge || zone.surface;
-    if (p.dist > TRAIL_HALF - 0.3) return zone ? zone.edge || zone.surface : SURFACES.poussiere; // les bords de la trace, plus meubles
+    if (p.dist > th - 0.3) return zone ? zone.edge || zone.surface : SURFACES.poussiere; // les bords de la trace, plus meubles
     return zone ? zone.surface : SURFACES.terre;
   }
 
@@ -520,6 +538,37 @@ export function createTrack(seed = 7, mapId = 'foret') {
     if (!arr) treeGrid.set(kk, (arr = []));
     arr.push(t);
   }
+  // Les passages étroits sont bordés : des troncs (en forêt) ou des blocs (en altitude), juste derrière la rubalise, de
+  // chaque côté. Ce sont des obstacles comme les autres : on s'y arrête net. (Un tirage à part : le reste de la forêt
+  // ne change pas.)
+  const boulders = [];
+  {
+    const r2 = rng(seed + 977);
+    for (const w of narrows) {
+      if (!w.edge) continue;
+      for (const side of [-1, 1]) {
+        for (let s = w.a - 2; s < w.b + 2; s += (w.edge === 'arbres' ? 3.2 : 2.6) + r2() * (w.edge === 'arbres' ? 3.5 : 2.4)) {
+          // (un bloc a son rayon : on le pose assez loin pour qu'il ne déborde pas sur la rubalise)
+          const r = w.edge === 'arbres' ? 0 : 0.45 + r2() * r2() * 0.9;
+          const f = sample(s), u = side * (w.half + 0.45 + r * 0.95 + r2() * (w.edge === 'arbres' ? 1.4 : 0.6));
+          const x = f.x + u * f.rx, z = f.z + u * f.rz;
+          const ground = terrainHeight(x, z, f.d, Math.abs(u));
+          if (w.edge === 'arbres') {
+            if (treeNear(x, z, 0.8)) continue;
+            const t = { x, z, y: ground - 0.15, h: 11 + r2() * 12, r: 0.2 + r2() * 0.2, hue: r2(), kind: r2() < 0.85 ? 'sapin' : 'feuillu' };
+            trees.push(t);
+            const kk = key(Math.floor(x / TREE_CELL), Math.floor(z / TREE_CELL));
+            let arr = treeGrid.get(kk);
+            if (!arr) treeGrid.set(kk, (arr = []));
+            arr.push(t);
+          } else {
+            boulders.push({ x, z, y: ground, r, h: r * (0.9 + r2() * 0.6), s, u, seed: r2() });
+          }
+        }
+      }
+    }
+  }
+
   /** Le tronc le plus proche à moins de `radius` mètres, ou null. */
   function treeNear(x, z, radius) {
     const cx = Math.floor(x / TREE_CELL), cz = Math.floor(z / TREE_CELL);
@@ -633,9 +682,9 @@ export function createTrack(seed = 7, mapId = 'foret') {
 
   return {
     seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null, peloton: map.peloton || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
-    natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight, tapeAt, vmaxAt, trailDist, trailS, band,
+    natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight, tapeAt, trailHalfAt, narrowAt, narrows, vmaxAt, trailDist, trailS, band,
     features, roots, rocks, bridges, onBridge, gates, respawns, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
-    bounds, trees, treeNear, buildings, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
+    bounds, trees, treeNear, boulders, buildings, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
   };
 }
 

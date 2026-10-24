@@ -117,18 +117,23 @@ glacier au village, inspirée de la Megavalanche de l'Alpe d'Huez (20 km, 2 600 
 glacier du Pic Blanc). Le départ en ligne y est choisi par défaut : sept de front sur la neige.
 
 - Le glacier : 40 m de large, balisé de piquets orange, une trace damée au milieu (on file à 80 km/h) et de la neige
-  molle de chaque côté (moins de grip, on ralentit) ; des séracs et des crevasses sur les bords, un radar en bas.
-- L'entonnoir : la neige s'arrête, le couloir se resserre entre les moraines jusqu'à la largeur d'un single.
+  molle de chaque côté (moins de grip, on ralentit) ; les vagues de neige, de longues ondulations où l'on flotte
+  vers 75 km/h ; des séracs et des crevasses sur les bords, un radar en bas.
+- L'entonnoir : la neige s'arrête, le couloir se resserre entre les moraines jusqu'au goulet, un single de 100 m
+  bordé de blocs (le bouchon de la Megavalanche).
 - Les pierriers : trois pierriers, la dalle de granit, le drop du Pic.
-- Le balcon : un single à flanc dans l'alpage, une vraie remontée (une vingtaine de mètres, il faut pédaler), le gué
-  du torrent.
-- Les lacets : six épingles dans la face ; les premiers mélèzes à mi-hauteur.
-- Le bois : le single des racines, une piste forestière à traverser, le bike park et ses tables, le road gap.
+- Le balcon : le sentier du balcon, un single en dévers bordé de blocs au-dessus du vide, des blocs, une vraie
+  remontée (une vingtaine de mètres, il faut pédaler), le gué du torrent.
+- Les lacets : six épingles dans la face, deux pierriers dans les traversées ; les premiers mélèzes, un single entre
+  les troncs.
+- Le bois : le couloir des sapins (un single entre les troncs, dans les racines), une piste forestière à traverser,
+  le bike park et ses tables, le road gap.
 - Le village : une ruelle pavée entre les maisons de pierre, une volée de marches, l'arrivée sur la place.
 
 Une piste aussi longue n'a de relief détaillé (avec sa physique), d'arbres et de décor que dans une bande de 60 m
 autour d'elle ; au-delà, le relief lointain. Le glacier, la remontée, le gué, les marches et le village sont des
-modules de la carte (`src/sim/maps.js`), comme les sauts.
+modules de la carte (`src/sim/maps.js`), comme les sauts. Les passages étroits aussi (`narrow`) : la rubalise se
+resserre à moins de 3 m, la trace à 1,5 m, et les bords se garnissent de troncs ou de blocs, de vrais obstacles.
 
 ## La physique
 

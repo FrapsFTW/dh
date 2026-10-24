@@ -253,6 +253,21 @@ transformed.y += w * 0.01 * flex;`);
     rocks.castShadow = rocks.receiveShadow = true;
     group.add(rocks);
   }
+  // Les blocs qui bordent les passages étroits (la physique les connaît : on s'y arrête net).
+  if (track.boulders.length) {
+    const geos = [31, 32, 33].map((seed) => rockGeometry(seed, { detail: 2, cuts: 7 }));
+    geos.forEach((geo, gi) => {
+      const mine = track.boulders.filter((_, i) => i % geos.length === gi);
+      const mesh = new THREE.InstancedMesh(geo, rockMat, mine.length);
+      mine.forEach((b, i) => {
+        q.setFromEuler(new THREE.Euler((b.seed - 0.5) * 0.3, b.seed * 40, 0));
+        mesh.setMatrixAt(i, m4.compose(p.set(b.x, b.y + b.h * 0.15, b.z), q, sc.set(b.r * 1.15, b.h, b.r)));
+      });
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.computeBoundingSphere();
+      group.add(mesh);
+    });
+  }
   const rootGeos = [];
   for (const r of track.roots) {
     const pts = [];

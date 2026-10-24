@@ -768,8 +768,9 @@ export class Bike {
     const n = Math.max(1, Math.round(P.crashImpactWindow / dt)) + 1;
     this.impact.push(speed);
     if (this.impact.length > n) this.impact.shift();
-    if (this.impact.some((s) => s - speed > P.crashImpactSpeed)) return this.crash(riderHit === 'arbre' ? 'Dans un arbre' : 'Choc');
-    if (riderHit) return this.crash(riderHit === 'arbre' ? 'Dans un arbre' : 'Chute');
+    const into = { arbre: 'Dans un arbre', rocher: 'Dans un rocher' }[riderHit];
+    if (this.impact.some((s) => s - speed > P.crashImpactSpeed)) return this.crash(into || 'Choc');
+    if (riderHit) return this.crash(into || 'Chute');
     // En l'air, toutes les orientations sont permises (figures) : c'est la réception qui juge.
     if (this.contacts > 0) {
       // Couché sur le côté, ou à l'envers.

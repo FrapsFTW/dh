@@ -49,6 +49,14 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
     );
     treeHandles.add(c.handle);
   }
+  // Les blocs qui bordent les passages étroits : à moitié enterrés, durs comme un tronc.
+  const rockHandles = new Set();
+  for (const b of track.boulders) {
+    const c = world.createCollider(
+      RAPIER.ColliderDesc.cylinder(b.h / 2, b.r * 0.85).setTranslation(b.x, b.y + b.h / 2 - 0.25, b.z).setCollisionGroups(GROUPS.trees),
+    );
+    rockHandles.add(c.handle);
+  }
 
   const bike = new Bike(world, track, params);
   const race = new Race(track);
@@ -117,6 +125,7 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
         const other = h1 === rider ? h2 : h2 === rider ? h1 : null;
         if (other === null) return;
         if (treeHandles.has(other)) riderHit = 'arbre';
+        else if (rockHandles.has(other)) riderHit = 'rocher';
         else if (groundHandles.has(other)) riderHit = riderHit || 'sol';
       });
       bike.afterStep(STEP, riderHit);

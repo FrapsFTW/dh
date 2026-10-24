@@ -327,6 +327,8 @@ const avalanche = {
       features: [
         { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
         // ----- Le glacier -----
+        // Les vagues de neige : de longues ondulations, qu'on prend lancé ; vers 75 km/h, on flotte sur les crêtes.
+        { type: 'rollers', name: 'les vagues de neige', a: g('glacier', 3), b: g('glacier', 7), height: 0.6, wave: 24, speed: 17 },
         { type: 'rollers', name: 'le replat bosselé', a: g('glacier', 10) - 20, b: g('glacier', 11) + 10, height: 0.35, wave: 9 },
         // ----- L'entonnoir et les pierriers -----
         { type: 'brakeBumps', a: g('entonnoir', 1) - 16, b: g('entonnoir', 1) + 2 },
@@ -337,10 +339,14 @@ const avalanche = {
         { type: 'jump', kind: 'drop', name: 'drop du Pic', a: sg('pierriers', 6, 0.7), lipLen: 3, lipH: 0.4, knuckle: 0.4, clear: 1.2, speed: 8.5, dig: 1.5 },
         // ----- Le balcon -----
         { type: 'offCamber', a: sg('balcon', 1, 0.3), b: sg('balcon', 3, 0.6), bank: -0.1 },
+        { type: 'rocks', name: 'les blocs du balcon', a: sg('balcon', 4, 0.15), b: sg('balcon', 4, 0.75) },
         { type: 'climb', name: 'la remontée', a: g('balcon', 5) - 10, b: g('balcon', 8) + 20 },
         { type: 'ford', name: 'le gué', a: g('balcon', 10) - 5, b: g('balcon', 10) + 5, depth: 0.25 },
         { type: 'rollers', a: sg('balcon', 11, 0.2), b: sg('balcon', 12, 0.8), height: 0.45, wave: 8 },
         { type: 'brakeBumps', a: g('balcon', 14) - 12, b: g('balcon', 14) + 2 },
+        // ----- Les lacets : deux pierriers dans les traversées -----
+        { type: 'rocks', name: 'pierrier des lacets', a: sg('lacets', 10, 0.15), b: sg('lacets', 11, 0.85) },
+        { type: 'rocks', name: 'les dalles brisées', a: sg('lacets', 22, 0.15), b: sg('lacets', 23, 0.85) },
         // ----- Le bois -----
         { type: 'road', name: 'piste forestière', a: sg('bois', 8, 0.5) - 3, b: sg('bois', 8, 0.5) + 3 },
         { type: 'brakeBumps', a: g('bois', 10) - 12, b: g('bois', 10) + 2 },
@@ -361,6 +367,14 @@ const avalanche = {
       ],
       // La largeur balisée : 40 m sur le glacier, qui se resserre dans l'entonnoir.
       wide: [{ a: sStart + 4, b: g('entonnoir', 0) + 150, half: 20, open: 14, close: 150 }],
+      // Les passages étroits : moins de 3 m entre les rubalises, bordés de blocs en altitude, de troncs en forêt. Le goulet
+      // arrive juste après le glacier, comme le bouchon de la Megavalanche.
+      narrow: [
+        { name: 'le goulet des moraines', a: g('entonnoir', 1) + 34, b: g('entonnoir', 3) - 10, half: 1.35, edge: 'blocs' },
+        { name: 'le sentier du balcon', a: sg('balcon', 1, 0.4), b: sg('balcon', 3, 0.9), half: 1.25, edge: 'blocs' },
+        { name: 'les premiers mélèzes', a: g('lacets', 28) + 8, b: g('bois', 0) - 4, half: 1.3, edge: 'arbres' },
+        { name: 'le couloir des sapins', a: g('bois', 2) + 5, b: g('bois', 4) - 5, half: 1.2, edge: 'arbres' },
+      ],
       // La vitesse que s'autorise le pilote auto (sur le glacier, on lâche les freins).
       fast: [{ a: sStart, b: g('glacier', 10), vmax: 21 }],
       village: { a: sVillage, b: sFinish + 25 },

@@ -55,10 +55,11 @@ export function autopilot(sim, opts = {}) {
   const rough = track.features.some((f) => f.type === 'rocks' && race.s > f.a - 15 && race.s < f.b)
     || track.roots.some((r) => r.s > race.s - 2 && r.s < race.s + 20);
   if (rough) vmax = Math.min(vmax, 9 * rp);
-  const rollers = track.features.some((f) => f.type === 'rollers' && race.s > f.a - 25 && race.s < f.b);
-  if (rollers) vmax = Math.min(vmax, 8.5 * rp);
+  // Des bosses : 8,5 m/s, sauf celles qui ont leur vitesse (de longues vagues, qu'on prend lancé).
+  const rollers = track.features.find((f) => f.type === 'rollers' && race.s > f.a - 25 && race.s < f.b);
+  if (rollers) vmax = Math.min(vmax, (rollers.speed ?? 8.5) * rp);
   for (const f of track.features) {
-    const slow = f.type === 'rocks' ? [9 * rp, 15] : f.type === 'rollers' ? [8.5 * rp, 25] : null;
+    const slow = f.type === 'rocks' ? [9 * rp, 15] : f.type === 'rollers' ? [(f.speed ?? 8.5) * rp, 25] : null;
     if (!slow) continue;
     const d = f.a - slow[1] - race.s;
     if (d > 0 && d < horizon) vmax = Math.min(vmax, Math.sqrt(slow[0] ** 2 + 2 * decelTo(d) * d));

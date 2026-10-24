@@ -89,7 +89,9 @@ export function lineFor(track, rider, seed, gridU = 0) {
       u = u * (1 - w) + w * (gridU * 0.9 + 2.5 * Math.sin(s / w1 + p1));
       u = Math.max(-(tape - 2), Math.min(tape - 2, u));
     }
-    return u;
+    // Dans un passage étroit, chacun reste entre les rubalises.
+    const lim = Math.max(0.2, tape - 0.9);
+    return Math.max(-lim, Math.min(lim, u));
   };
 }
 
@@ -164,6 +166,8 @@ export function recordRider(sim, rider, slot, { pace = rider.pace, seed = rider.
     else inp = autopilot(sim, { pace, line });
     sim.step(inp);
     if (sim.bike.crashed || sim.race.out || sim.race.missed) return null;
+    // Un rival ne touche jamais la rubalise (le joueur, lui, a un demi-mètre de tolérance) : sinon, on refait sa descente.
+    if (finish === null && sim.race.state === 'course' && Math.abs(sim.race.u) > sim.track.tapeAt(sim.race.s) - 0.1) return null;
     // (sur l'horloge de la descente : le chrono, lui, s'arrête à l'arrivée)
     if (t + STEP + 1e-9 >= next) { push(); next += 1 / RATE; }
     if (finish === null && sim.race.state === 'arrivee') {

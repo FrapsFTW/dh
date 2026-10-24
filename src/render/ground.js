@@ -11,7 +11,6 @@
 import * as THREE from 'three';
 import { NOISE_GLSL, BUMP_GLSL } from './glsl.js';
 import { layerGLSL } from './groundLayers.js';
-import { TRAIL_HALF } from '../sim/track.js';
 import { smoothstep, fbm } from '../sim/noise.js';
 
 /** Densité de forêt (0 à 1), lissée, sur une grille de 2 m : partagée par le relief et la piste. */
@@ -40,8 +39,6 @@ export function forestDensity(track) {
   return at;
 }
 
-const TH = (x) => (TRAIL_HALF + x).toFixed(2);
-
 const groundChunk = (low) => /* glsl */ `
 precision highp sampler2DArray;
 uniform sampler2DArray uGroundC, uGroundN;
@@ -49,7 +46,7 @@ uniform float uTreeline, uSnowline;
 varying vec3 vWPos;
 varying vec3 vWN;
 varying float vForest;
-varying vec3 vTrail; // x : u (mètres, travers de la piste), y : s (le long), z : 1 si on est sur la piste
+varying vec3 vTrail; // x : u (mètres, travers de la piste), y : s (le long), z : la demi-largeur de la trace (0 hors piste)
 varying float vRocky; // 1 dans un pierrier
 varying float vSlab; // 1 sur une dalle de granit
 varying float vSnow; // 1 sur un glacier
@@ -169,10 +166,11 @@ void dh_ground(out vec3 col, out float rough, out float h, out vec3 nW) {
   if (vTrail.z > 0.0) {
     float u = vTrail.x, s = vTrail.y, au = abs(u);
     float edge = (dh_noise(vec2(s * 0.6, u * 0.8)) - 0.5) * 0.9 + (m3 - 0.5) * 0.3;
-    float onTrail = 1.0 - smoothstep(${TH(-0.1)}, ${TH(1.0)}, au + edge);
+    float th = vTrail.z; // (plus fine dans un passage étroit)
+    float onTrail = 1.0 - smoothstep(th - 0.1, th + 1.0, au + edge);
     // La trace (le milieu) : plus sombre et tassée ; les bords poussiéreux ; des traces de pneus dans la pente.
     float line = 1.0 - smoothstep(0.25, 1.1, abs(u - (dh_noise(vec2(s * 0.05, 3.0)) - 0.5) * 0.8));
-    float dust = smoothstep(0.9, ${TH(0)}, au + edge * 0.6);
+    float dust = smoothstep(min(0.9, th * 0.6), th, au + edge * 0.6);
     float streak = dh_noise(vec2(u * 7.0, s * 0.12));
     vec3 tt = mix(vec3(1.0), vec3(1.2, 1.14, 1.04), dust) * mix(1.0, 0.78, line) * (0.9 + 0.18 * streak);
     // Terre en forêt, avec des passages caillouteux ; graviers en altitude.
@@ -181,7 +179,7 @@ void dh_ground(out vec3 col, out float rough, out float h, out vec3 nW) {
     gR = mix(gR, gR * 0.86, line * onTrail);
     // Le pierrier, et la dalle de granit.
     dh_put(L_PIERRIER, vRocky * smoothstep(0.0, 0.4, 1.0 - au / 3.2), vec3(1.0));
-    float slabW = vSlab * (1.0 - smoothstep(${TH(0.6)}, ${TH(2.2)}, au + edge));
+    float slabW = vSlab * (1.0 - smoothstep(th + 0.6, th + 2.2, au + edge));
     dh_putRock(L_ROCHE, slabW, vec3(1.08), N);
     // Sur le glacier, la trace est de la neige damée, striée par la dameuse et creusée d'ornières par les pneus.
     if (vSnow > 0.0) {
@@ -300,7 +298,7 @@ export function createGround(sim, tex, { low = false } = {}) {
     const x = ribbon.positions[i * 3], z = ribbon.positions[i * 3 + 2];
     const u = ribbon.uv[i * 2], s = ribbon.uv[i * 2 + 1];
     rForest[i] = forestAt(x, z);
-    rTrail[i * 3] = u; rTrail[i * 3 + 1] = s; rTrail[i * 3 + 2] = 1;
+    rTrail[i * 3] = u; rTrail[i * 3 + 1] = s; rTrail[i * 3 + 2] = track.trailHalfAt(s);
     for (const f of rocks) rRocky[i] = Math.max(rRocky[i], smoothstep(f.a - 1, f.a + 2, s) * (1 - smoothstep(f.b - 2, f.b + 1, s)));
     for (const f of slabs) rSlab[i] = Math.max(rSlab[i], smoothstep(f.a - 1, f.a + 1, s) * (1 - smoothstep(f.b - 1, f.b + 1, s)));
   }

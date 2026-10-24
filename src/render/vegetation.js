@@ -278,11 +278,11 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     if (rand() < 0.75) {
       const ss = rand() * track.length, f = track.sample(ss);
       const side = rand() < 0.5 ? -1 : 1;
-      const u = side * (TRAIL_HALF + 0.6 + Math.pow(rand(), 1.6) * 26);
+      const u = side * (track.trailHalfAt(ss) + 0.5 + Math.pow(rand(), 1.6) * 26);
       x = f.x + u * f.rx; z = f.z + u * f.rz;
     } else [x, z] = anywhere();
     const near = track.nearest(x, z, null, 0, 3);
-    if (near.dist < TRAIL_HALF + 0.5 && near.inside) continue;
+    if (near.inside && near.dist < track.trailHalfAt(near.s) + 0.4) continue; // (jusqu'au bord de la trace, même étroite)
     if (bare(x, z, near)) continue;
     const forest = forestAt(x, z);
     const n = fbm(x / 9, z / 9, 2, 31) * 0.5 + 0.5;
@@ -313,7 +313,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
       x = f.x + u * f.rx; z = f.z + u * f.rz;
     } else [x, z] = anywhere();
     const near = track.nearest(x, z, null, 0, 3);
-    if (near.dist < TRAIL_HALF + 1.2 && near.inside) continue;
+    if (near.inside && near.dist < Math.max(track.trailHalfAt(near.s) + 1.2, track.tapeAt(near.s) + 0.3)) continue;
     if (track.buildings.length && nearHouse(x, z, 2)) continue;
     if (track.band !== null && Number.isFinite(near.dist) && near.dist < track.tapeAt(near.s) + 1.5) continue; // (le couloir du glacier)
     if (snowZones.length && track.trailDist(x, z) < 110 && snowZones.some((zz) => { const ss = track.trailS(x, z); return ss > zz.a - 20 && ss < zz.b + 10; })) continue; // (pas de cailloux sur la neige)
