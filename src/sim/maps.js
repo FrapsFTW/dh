@@ -399,5 +399,176 @@ const avalanche = {
   peloton: { cols: 7, colGap: 2.6, rowGap: 3.4, offset: 24, default: true },
 };
 
-export const MAPS = { foret, alpes, avalanche };
+// ---------------------------------------------------------------------------------------------------------------
+// Le Bike Park : une ligne de gros sauts dans un alpage, pour le plaisir de voler.
+//   la ligne des trois tables · berm · step-down et le grand gap · berm · les doubles · berm · bosses et road gap ·
+//   le Big One, le plus gros saut du jeu, devant l'arrivée. Les virages sont des berms : relevés, on les prend vite.
+// ---------------------------------------------------------------------------------------------------------------
+const bikepark = {
+  id: 'bikepark',
+  name: 'Le Bike Park',
+  blurb: "1,2 km dans un alpage, une dizaine de gros sauts reliés par des berms, environ 1 min 30. Pour voler : tables, step-down, gaps, et le Big One devant l'arrivée. En l'air, couche le vélo (whip).",
+  control: [
+    // la cabane, et la ligne des trois tables
+    [0, 40], [0, 24], [0, 0], [8, -40], [22, -90], [38, -140], [52, -185], [62, -215],
+    // berm
+    [72, -238], [70, -262], [54, -276],
+    // le step-down et le grand gap
+    [30, -300], [5, -340], [-20, -385], [-42, -430], [-56, -462],
+    // berm
+    [-68, -485], [-64, -510], [-46, -522],
+    // les doubles
+    [-20, -545], [8, -590], [32, -640], [48, -680],
+    // berm
+    [58, -702], [52, -726], [34, -738],
+    // les bosses et le road gap
+    [10, -760], [-12, -800], [-26, -840], [-32, -875],
+    // le Big One et l'arrivée
+    [-30, -910], [-22, -950], [-18, -990], [-16, -1030], [-16, -1070],
+  ],
+  // Un alpage régulier (21 %), qui s'adoucit en bas dans le fond de vallée de l'arrivée.
+  relief(seed) {
+    const SLOPE = 0.21, VALLEY_Z = 1010;
+    const valley = (z) => SLOPE * z + (SLOPE - 0.04) * 10 * softplus(-(z + VALLEY_Z) / 10);
+    return (x, z) => valley(z) + 4.0 * fbm(x / 90, z / 90, 4, seed) + 0.5 * fbm(x / 16, z / 16, 2, seed + 5) + 0.0004 * x * x
+      + 60 * smoothstep(250, 900, Math.abs(x)) * fbm(x / 400, z / 400, 3, seed + 31);
+  },
+  layout({ cpS, seg, L }) {
+    const sStart = cpS[1] + 1;
+    const sFinish = cpS[33] - 4;
+    // Les sauts du bike park : de grosses tables bien dessinées, de la place pour voler (et pour un whip).
+    const table = (name, a, speed, more = {}) => ({ type: 'jump', kind: 'table', name, a, lipLen: 5, lipH: 1.4, knuckle: 6.5, clear: 0.7, touchLen: 4, speed, dig: 2, landFlatten: 0.15, ...more });
+    return {
+      sStart,
+      sFinish,
+      spawnS: cpS[0] + 3,
+      speedTrap: cpS[30] + 2, // juste avant le Big One
+      features: [
+        { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
+        // ----- La ligne des trois tables -----
+        table('première table', seg(3, 4, 0.2), 10.5, { lipH: 1.1, knuckle: 5 }),
+        table('deuxième table', seg(4, 5, 0.55), 11.5),
+        table('la grande table', seg(5, 6, 0.85), 12.5, { lipH: 1.8, knuckle: 8, clear: 0.9 }),
+        { type: 'brakeBumps', a: cpS[8] - 14, b: cpS[8] + 2 },
+        // ----- Le step-down et le grand gap -----
+        { type: 'jump', kind: 'drop', name: 'step-down', look: 'terre', a: seg(11, 12, 0.3), lipLen: 4, lipH: 0.7, knuckle: 2, clear: 0.8, touchLen: 4.5, speed: 11, dig: 1.5, landFlatten: 0.15 },
+        { type: 'jump', kind: 'gap', name: 'le grand gap', a: seg(13, 14, 0.15), lipLen: 6, lipH: 1.6, knuckle: 8, clear: 0.9, touchLen: 5, dip: -1.1, speed: 13, dig: 2.5, landFlatten: 0.15 },
+        { type: 'brakeBumps', a: cpS[16] - 14, b: cpS[16] + 2 },
+        // ----- Les doubles -----
+        table('double', seg(19, 20, 0.35), 12),
+        table('double', seg(20, 21, 0.55), 12.5, { lipH: 1.6, knuckle: 7.5 }),
+        { type: 'brakeBumps', a: cpS[23] - 14, b: cpS[23] + 2 },
+        // ----- Les bosses et le road gap -----
+        { type: 'rollers', a: seg(26, 27, 0.1), b: seg(26, 27, 0.9), height: 0.6, wave: 10 },
+        { type: 'jump', kind: 'gap', name: 'road gap', a: seg(28, 29, 0.0), lipLen: 6, lipH: 1.3, knuckle: 7, clear: 0.9, touchLen: 5, dip: -1.3, speed: 12, dig: 2.5, landFlatten: 0.15 },
+        // ----- Le Big One -----
+        // Le plus gros saut du jeu : près d'une seconde et demie en l'air, de quoi tenter un backflip, un 360 ou un gros
+        // whip. La réception pardonne d'arriver un peu trop vite.
+        { type: 'jump', kind: 'table', name: 'le Big One', a: cpS[30] + 8, lipLen: 7, lipH: 2.6, knuckle: 10, clear: 1.6, speed: 12.5, touchLen: 4, lineLen: 10, landFlatten: 0.25, runout: 18 },
+        { type: 'arena', a: seg(32, 33, 0.75), b: L },
+      ],
+      gates: [
+        { kind: 'depart', s: sStart },
+        { kind: 'point', s: cpS[9] },
+        { kind: 'point', s: cpS[17] },
+        { kind: 'point', s: cpS[24] },
+        { kind: 'point', s: cpS[30] },
+        { kind: 'arrivee', s: sFinish },
+      ],
+      // Ici, on lâche les freins : le pilote auto s'autorise 55 km/h entre les sauts.
+      fast: [{ a: sStart, b: sFinish, vmax: 15 }],
+    };
+  },
+  // Un alpage : quelques bosquets de sapins, beaucoup d'herbe.
+  trees: { tries: 9000 },
+  env: { treeline: null, haze: 1.2e-4, hazeHeight: 1100, far: { radius: 1100, step: 14 }, range: { height: 1500, top: 220, ramp: 1400, scale: 0.6 } },
+};
+
+// ---------------------------------------------------------------------------------------------------------------
+// Le Single : un petit sentier dans les sapins, à peine plus large qu'un guidon, qui descend en épingles.
+//   Balisé serré presque de bout en bout : les troncs frôlent la rubalise. Des racines, un pierrier, une petite marche.
+// ---------------------------------------------------------------------------------------------------------------
+// Les épingles : des traversées presque à plat en travers de la pente (cap à ±H du sens de la pente), reliées par des
+// demi-tours de R m de rayon. Le tracé est calculé (droites et arcs, un point tous les 5 m) : la courbe passe exactement
+// par ce dessin. SINGLE_MARKS garde le premier point de chaque traversée et de chaque épingle.
+const SINGLE_TURNS = 7;
+const SINGLE_MARKS = { legs: [], turns: [] };
+const SINGLE_CONTROL = (() => {
+  const H = 1.2, R = 11, LEG = 30;
+  const pts = [[0, 30], [0, 16]];
+  let x = 0, z = 16, h = 0; // h : le cap, depuis le sens de la pente (-z), positif vers +x
+  const step = (ds, dh) => { x += Math.sin(h + dh / 2) * ds; z -= Math.cos(h + dh / 2) * ds; h += dh; pts.push([x, z]); };
+  const line = (len) => { const n = Math.max(1, Math.round(len / 5)); for (let k = 0; k < n; k++) step(len / n, 0); };
+  const arc = (to) => { const len = Math.abs(to - h) * R, n = Math.max(2, Math.round(len / 5)), dh = (to - h) / n; for (let k = 0; k < n; k++) step(len / n, dh); };
+  line(24);
+  arc(-H);
+  for (let i = 0; i < SINGLE_TURNS; i++) {
+    SINGLE_MARKS.legs.push(pts.length - 1);
+    line(LEG);
+    SINGLE_MARKS.turns.push(pts.length - 1);
+    arc(i % 2 ? -H : H);
+  }
+  SINGLE_MARKS.legs.push(pts.length - 1);
+  line(LEG);
+  arc(0);
+  line(70);
+  return pts;
+})();
+
+const single = {
+  id: 'single',
+  name: 'Le Single',
+  blurb: "Environ 550 m, 1 min. Un sentier dans les sapins, à peine plus large qu'un guidon, qui descend en sept épingles : racines, pierrier, une petite marche. La rubalise serre la trace de bout en bout.",
+  control: SINGLE_CONTROL,
+  // Une pente de forêt raide (38 %), qui s'adoucit en bas.
+  relief(seed) {
+    const SLOPE = 0.38, VALLEY_Z = 288;
+    const valley = (z) => SLOPE * z + (SLOPE - 0.05) * 8 * softplus(-(z + VALLEY_Z) / 8);
+    return (x, z) => valley(z) + 3.0 * fbm(x / 70, z / 70, 4, seed) + 0.6 * fbm(x / 12, z / 12, 2, seed + 5) + 0.0005 * x * x;
+  },
+  layout({ cpS, seg, L }) {
+    const n = cpS.length;
+    const leg = (i, f) => seg(SINGLE_MARKS.legs[i], SINGLE_MARKS.legs[i] + 6, f); // le long de la traversée i (30 m)
+    const turn = (i) => cpS[SINGLE_MARKS.turns[i]] + 8; // le milieu de l'épingle i
+    const sStart = cpS[1] + 1;
+    const sFinish = cpS[n - 4];
+    return {
+      sStart,
+      sFinish,
+      spawnS: cpS[0] + 3,
+      speedTrap: cpS[n - 8],
+      features: [
+        { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
+        { type: 'brakeBumps', a: turn(0) - 18, b: turn(0) - 9 },
+        { type: 'brakeBumps', a: turn(2) - 18, b: turn(2) - 9 },
+        { type: 'rocks', name: 'le pierrier', a: leg(3, 0.1), b: leg(3, 0.85) },
+        { type: 'brakeBumps', a: turn(4) - 18, b: turn(4) - 9 },
+        { type: 'jump', kind: 'drop', name: 'la marche', a: leg(5, 0.15), lipLen: 3, lipH: 0.4, knuckle: 0.6, clear: 0.9, speed: 6.5, dig: 1.2, runout: 12 },
+        { type: 'arena', a: cpS[n - 7], b: L },
+      ],
+      // Des racines dans presque toutes les traversées : c'est la forêt.
+      roots: [[leg(0, 0.1), leg(0, 0.9)], [leg(1, 0.2), leg(1, 0.95)], [leg(2, 0.1), leg(2, 0.6)], [leg(4, 0.1), leg(4, 0.9)], [leg(6, 0.1), leg(6, 0.9)], [leg(7, 0.1), leg(7, 0.7)]],
+      // Le sentier, balisé serré : 2,2 m entre les rubalises (2,4 m dans le pierrier, entre les blocs).
+      narrow: [
+        // (après la grille du départ en ligne : sept rangs de trois, sur une vingtaine de mètres)
+        { name: 'le single', a: sStart + 40, b: leg(3, 0.1), half: 1.1, edge: 'arbres' },
+        { name: 'le pierrier', a: leg(3, 0.1), b: leg(3, 0.85), half: 1.2, edge: 'blocs' },
+        { name: 'le single', a: leg(3, 0.85), b: cpS[n - 9], half: 1.1, edge: 'arbres' }, // (jusqu'au radar)
+      ],
+      // Sur un sentier si serré, le pilote auto ne dépasse pas 25 km/h.
+      fast: [{ a: 0, b: L, vmax: 7 }],
+      gates: [
+        { kind: 'depart', s: sStart },
+        { kind: 'point', s: leg(2, 0.5) },
+        { kind: 'point', s: leg(4, 0.5) },
+        { kind: 'point', s: leg(6, 0.5) },
+        { kind: 'arrivee', s: sFinish },
+      ],
+    };
+  },
+  trees: { tries: 30000 },
+  env: { treeline: null, haze: 3.6e-4, hazeHeight: 650, far: { radius: 650, step: 12 }, range: { height: 480, top: 130, ramp: 650, scale: 0.3 } },
+};
+
+export const MAPS = { foret, alpes, avalanche, bikepark, single };
 export const MAP_IDS = Object.keys(MAPS);

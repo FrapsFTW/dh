@@ -351,6 +351,93 @@ test('mode Normal : le pilote automatique descend toute la piste', { timeout: 30
   console.log(`  pilote auto, mode Normal : ${sim.race.time.toFixed(1)} s`);
 });
 
+/**
+ * Le whip, sur le Big One du Bike Park : le pilote auto amène le vélo, puis en l'air le stick sur le côté couche le vélo ;
+ * relâché à `release` s de vol (jamais si null), il se redresse.
+ */
+function whipOnBigOne(mode, release) {
+  const sim = createSim({ map: 'bikepark', mode });
+  const jump = sim.track.features.find((f) => f.name === 'le Big One');
+  sim.race.next = sim.track.gates.length - 1; sim.race.state = 'course';
+  sim.bike.placeOnTrack(jump.lipS - 60, 12);
+  sim.race.s = jump.lipS - 60;
+  let inAir = false, most = 0;
+  for (let t = 0; t < 12 && sim.race.s < jump.b + 5; t += STEP) {
+    let inp = autopilot(sim);
+    const st = sim.bike.state();
+    if (st.contacts === 0 && sim.race.s > jump.lipS - 1) inAir = true;
+    if (inAir && st.contacts === 0) inp = { ...inp, steer: release === null || st.airTime < release ? 1 : 0, hop: false };
+    sim.step(inp);
+    most = Math.max(most, Math.abs(sim.bike.whip));
+    if (sim.bike.crashed) break;
+  }
+  return { sim, most };
+}
+
+test("le whip : en l'air, le stick sur le côté couche le vélo ; redressé avant de se poser, c'est une figure", () => {
+  for (const mode of ['normal', 'ultra']) {
+    const { sim, most } = whipOnBigOne(mode, 0.55);
+    assert.ok(most > 0.9, `${mode} : couché à ${(most * 100).toFixed(0)} % seulement`);
+    assert.equal(sim.bike.crashed, null, `${mode} : ${sim.bike.crashed?.reason}`);
+    assert.deepEqual(sim.tricks.landed, ['Whip'], mode);
+  }
+});
+
+test('le whip : posé encore couché, on tombe en Ultra-réaliste ; en Normal, le pilote rattrape le vélo', () => {
+  const ultra = whipOnBigOne('ultra', null).sim;
+  assert.equal(ultra.bike.crashed?.reason, 'Whip pas rattrapé');
+  const normal = whipOnBigOne('normal', null).sim;
+  assert.equal(normal.bike.crashed, null, normal.bike.crashed?.reason);
+  assert.deepEqual(normal.tricks.landed, [], 'pas de figure pour un whip posé couché');
+});
+
+// ---------- Les nouvelles pistes : Le Bike Park, Le Single ----------
+
+for (const map of ['bikepark', 'single']) {
+  for (const mode of ['ultra', 'normal']) {
+    test(`${map === 'bikepark' ? 'Le Bike Park' : 'Le Single'}, mode ${mode === 'ultra' ? 'Ultra-réaliste' : 'Normal'} : le pilote automatique descend toute la piste sans tomber ni sortir`, { timeout: 600000 }, () => {
+      const sim = createSim({ map, mode });
+      let t = 0, outs = 0;
+      while (sim.race.state !== 'arrivee' && t < 300) {
+        sim.step(autopilot(sim));
+        if (sim.bike.crashed && sim.bike.crashed.t > 1) sim.respawn();
+        if (sim.race.out) { outs++; sim.respawn(); }
+        t += STEP;
+      }
+      assert.equal(sim.race.state, 'arrivee', `arrêté à ${sim.race.s.toFixed(0)} m sur ${sim.track.length.toFixed(0)}`);
+      assert.equal(sim.race.splits.length, sim.track.gates.length - 1);
+      assert.equal(sim.race.crashes, 0, `${sim.race.crashes} chutes`);
+      assert.equal(outs, 0, `${outs} sorties du balisage`);
+      console.log(`  pilote auto, ${map}, ${mode} : ${sim.race.time.toFixed(1)} s`);
+    });
+  }
+}
+
+test("Le Bike Park : de gros sauts (plus d'une demi-seconde en l'air à leur vitesse), le Big One le plus long", () => {
+  const t = tracks.bikepark, y = (s) => t.trailY(s, 0);
+  const airtime = (f) => {
+    const lip = f.lipS, sl = (y(lip) - y(lip - 0.25)) / 0.25, c = 1 / Math.sqrt(1 + sl * sl), vx = f.speed * c, vy = f.speed * sl * c;
+    for (let x = 0.3; x < 60; x += 0.05) { const tt = x / vx; if (y(lip) + vy * tt - 4.905 * tt * tt <= y(lip + x)) return tt; }
+    return Infinity;
+  };
+  const jumps = t.features.filter((f) => f.type === 'jump' && f.kind !== 'drop');
+  assert.ok(jumps.length >= 8, `${jumps.length} sauts`);
+  for (const f of jumps) assert.ok(airtime(f) > 0.6, `${f.name} : ${airtime(f).toFixed(2)} s`);
+  const big = jumps.find((f) => f.name === 'le Big One');
+  for (const f of jumps) if (f !== big) assert.ok(airtime(big) > airtime(f), `${f.name} vole plus longtemps que le Big One`);
+});
+
+test('Le Single : balisé à moins de 2,5 m de large sur presque toute la descente, en épingles serrées', () => {
+  const t = tracks.single;
+  let narrow = 0, n = 0;
+  for (let s = t.sStart; s < t.sFinish; s += 1) { n++; if (t.tapeAt(s) * 2 < 2.5) narrow++; }
+  assert.ok(narrow / n > 0.85, `étroit sur ${((narrow / n) * 100).toFixed(0)} % seulement`);
+  let hairpins = 0, inTurn = false;
+  for (const k of t.K) { const tight = Math.abs(k) > 1 / 14; if (tight && !inTurn) hairpins++; inTurn = tight; }
+  assert.ok(hairpins >= 7, `${hairpins} épingles`);
+  assert.ok(t.sFinish - t.sStart < 700, 'une petite piste');
+});
+
 // ---------- La Grande Combe ----------
 
 for (const mode of ['ultra', 'normal']) {

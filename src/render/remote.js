@@ -6,14 +6,27 @@
 import * as THREE from 'three';
 import { createBikeModel } from './bikeModel.js';
 import { tagSprite } from './peloton.js';
-import { POSE, FLAG } from '../sim/peloton.js';
+import { POSE, POSE_SIZE, FLAG } from '../sim/peloton.js';
 import { KITS } from '../net/online.js';
 
 /** Le retard d'affichage (ms) : un peu plus de deux poses. */
 export const DELAY = 160;
 const NEAR = 40, FAR = 600, SHADOW = 28, TAG = 160;
 const KEEP = 3000; // les poses gardées (ms)
-const Y = new THREE.Vector3(0, 1, 0);
+const Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+
+/**
+ * Le whip (st.whip, de -1 à 1) : le vélo couché sur le côté en l'air, tourné seul autour des hanches, vers le côté où
+ * l'on pousse le stick. Renvoie le style que prend bikeModel.update (dans out), ou null s'il est droit.
+ */
+const qRoll = new THREE.Quaternion();
+export function whipStyle(st, out) {
+  const w = st.whip || 0;
+  if (Math.abs(w) < 0.01) return null;
+  out.q.setFromAxisAngle(Y, -0.5 * w).multiply(qRoll.setFromAxisAngle(Z, -0.95 * w));
+  out.pivot.copy(st.hips);
+  return out;
+}
 
 export function createRemoteRiders(scene) {
   const riders = new Map();
@@ -31,7 +44,7 @@ export function createRemoteRiders(scene) {
       input: { pedal: 0 }, hips: new THREE.Vector3(0, 1.07, 0.08), crouch: 0,
       wheels: [{ x: 0, spinAngle: 0, contact: true, omega: 0 }, { x: 0, spinAngle: 0, contact: true, omega: 0 }],
     };
-    return { id: p.id, key: `${p.name}|${p.color}|${num}`, rider, model, tag, state, buf: [], hist: [], near: true, shadows: true, seen: false };
+    return { id: p.id, style: { q: new THREE.Quaternion(), pivot: new THREE.Vector3() }, key: `${p.name}|${p.color}|${num}`, rider, model, tag, state, buf: [], hist: [], near: true, shadows: true, seen: false };
   }
   function drop(R) { scene.remove(R.model.group); scene.remove(R.tag); R.tag.material.map.dispose(); R.tag.material.dispose(); }
 
@@ -60,6 +73,7 @@ export function createRemoteRiders(scene) {
     const dtAB = (B.at - A.at) / 1000;
     st.speed = dtAB > 0 ? Math.hypot(B.p[0] - A.p[0], B.p[2] - A.p[2]) / dtAB : 0;
     st.s = L(POSE.s);
+    st.whip = A.p.length > POSE_SIZE && B.p.length > POSE_SIZE ? L(POSE_SIZE) : 0; // (envoyé après la pose)
     return true;
   }
 
@@ -123,7 +137,7 @@ export function createRemoteRiders(scene) {
         if (near !== R.near) { R.near = near; R.model.setNear(near); }
         const shadows = dist < SHADOW;
         if (shadows !== R.shadows) { R.shadows = shadows; R.model.group.traverse((m) => { if (m.isMesh) m.castShadow = shadows; }); }
-        R.model.update(st, dt, false, null);
+        R.model.update(st, dt, false, whipStyle(st, R.style));
         if (R.tag.visible) {
           R.tag.position.copy(st.position).addScaledVector(Y, 1.95);
           const k = THREE.MathUtils.clamp(dist * 0.05, 0.4, 3.2);

@@ -38,7 +38,8 @@ export class Tricks {
       return;
     }
     if (!bike.grounded) {
-      const a = (this.air ||= { pitch: 0, yaw: 0, time: 0 });
+      const a = (this.air ||= { pitch: 0, yaw: 0, time: 0, whip: 0 });
+      a.whip = Math.max(a.whip, Math.abs(bike.whip || 0));
       // Vitesses de rotation dans le repère du vélo : tangage autour de sa droite, lacet autour de son haut.
       const r = bike.body.rotation(), w = bike.body.angvel();
       const qx = r.x, qy = r.y, qz = r.z, qw = r.w;
@@ -48,7 +49,8 @@ export class Tricks {
       a.yaw += (w.x * Ux + w.y * Uy + w.z * Uz) * dt;
       a.time += dt;
     } else if (this.air) {
-      const name = this.air.time > 0.3 ? trickName(this.air.pitch, this.air.yaw) : null;
+      // (un whip franc, redressé à temps, compte aussi, s'il n'y a pas de rotation)
+      const name = this.air.time > 0.3 ? trickName(this.air.pitch, this.air.yaw) || (this.air.whip > 0.6 && Math.abs(bike.whip || 0) < 0.45 ? 'Whip' : null) : null;
       if (name) this.pending = { name, t: 0 };
       this.air = null;
     }

@@ -117,6 +117,9 @@ export const DEFAULT_PARAMS = {
   tuckInertia: 0.35, // groupé, le vélo et le pilote ont 35 % d'inertie en moins en tangage
   // Aides au pilotage (mode Normal ; à zéro en Ultra-réaliste)
   brakeAssist: 0, // le pilote dose le frein avant : la roue ne bloque pas, il relâche avant de basculer, pas de frein en l'air
+  whipRate: 3.2, // le whip : vitesse à laquelle le pilote couche le vélo en l'air (fraction du maximum par seconde)
+  whipReturn: 4.5, // et le redresse
+  whipCrash: 0.55, // couché à plus de 55 % du maximum à la réception : chute (sauf si l'aide en l'air le rattrape)
   airAssist: 0, // en l'air, il replace le vélo dans l'axe de la réception
   airAssistFreq: 4.5, // vitesse de ce replacement (rad/s)
   airAssistMaxTorque: 260,
@@ -234,7 +237,7 @@ export class Bike {
     this.hopCharge = 0; this.hopWasHeld = false; this.hopExtend = 0;
     this.hips.copy(this.neutralHips); this.foreAft = 0; this.riderOffset.set(0, 0, 0);
     this.crashed = null; this.airTime = 0; this.contacts = 0; this.impact.length = 0;
-    this.grounded = false; this.tuck = 0; this.hopArmed = true; this.stuckTime = 0;
+    this.grounded = false; this.tuck = 0; this.hopArmed = true; this.stuckTime = 0; this.whip = 0; this.whipLanded = 0;
     this._land.found = false; this._land.timer = 0;
     this.setMass();
   }
@@ -457,8 +460,21 @@ export class Bike {
     this.contacts = 0;
     this.simWheel(wf, { anchorLocal: wf.anchorLocal, axis, wheelFwd: frontFwd, motor: 0, brake: brakeF, antiLock: P.brakeAssist, sideSlip: P.sideSlipFront, staticLoad: this.staticLoad.front, liveLoad: live.front, com, q, qi, t, invMass, speed, dt });
     this.simWheel(wr, { anchorLocal: wr.anchorLocal, axis: U, wheelFwd: F, motor: drive, brake: brakeR, antiLock: 0, sideSlip: P.sideSlipRear, staticLoad: this.staticLoad.rear, liveLoad: live.rear, com, q, qi, t, invMass, speed, dt });
+    const wasGrounded = this.grounded;
     this.grounded = wf.grounded || wr.grounded;
     this.airTime = this.grounded ? 0 : this.airTime + dt;
+    // ----- Le whip -----
+    // En l'air, sans se grouper, le stick sur le côté couche le vélo, comme les pros ; relâché, le pilote le redresse.
+    // C'est un geste du pilote, qui ne change pas la trajectoire : l'affichage tourne le vélo seul autour des hanches
+    // (whip, de -1 à 1). À la réception, il faut l'avoir redressé (voir afterStep).
+    if (this.grounded) {
+      if (!wasGrounded) this.whipLanded = Math.abs(this.whip);
+      this.whip += clamp(-this.whip, -dt * 12, dt * 12);
+    } else {
+      const want = !crashed && this.airTime > 0.12 && this.tuck < 0.05 && Math.abs(inp.steer) > 0.15 ? clamp(inp.steer, -1, 1) : 0;
+      const rate = Math.abs(want) > Math.abs(this.whip) ? P.whipRate : P.whipReturn;
+      this.whip += clamp(want - this.whip, -dt * rate, dt * rate);
+    }
 
     // ----- Résistance au roulement et de l'air -----
     if (this.grounded) {
@@ -773,6 +789,10 @@ export class Bike {
     if (riderHit) return this.crash(into || 'Chute');
     // En l'air, toutes les orientations sont permises (figures) : c'est la réception qui juge.
     if (this.contacts > 0) {
+      // Posé le vélo encore couché (whip pas redressé) : en Ultra-réaliste, c'est la chute ; en Normal, le pilote le rattrape.
+      const whip = this.whipLanded;
+      this.whipLanded = 0;
+      if (whip > P.whipCrash && !(P.airAssist > 0)) return this.crash('Whip pas rattrapé');
       // Couché sur le côté, ou à l'envers.
       if (Math.abs(this.lean) > P.crashLeanDeg * DEG || U.y < -0.25) return this.crash('Chute');
       // Basculer vers l'avant ou vers l'arrière par rapport au sol.
@@ -819,6 +839,7 @@ export class Bike {
       crouch: this.crouch,
       hopCharge: this.hopCharge,
       tuck: this.tuck,
+      whip: this.whip || 0,
       com: this.comLocal,
       crashed: this.crashed,
       input: this.input,

@@ -548,14 +548,15 @@ export function createTrack(seed = 7, mapId = 'foret') {
       if (!w.edge) continue;
       for (const side of [-1, 1]) {
         for (let s = w.a - 2; s < w.b + 2; s += (w.edge === 'arbres' ? 3.2 : 2.6) + r2() * (w.edge === 'arbres' ? 3.5 : 2.4)) {
-          // (un bloc a son rayon : on le pose assez loin pour qu'il ne déborde pas sur la rubalise)
-          const r = w.edge === 'arbres' ? 0 : 0.45 + r2() * r2() * 0.9;
-          const f = sample(s), u = side * (w.half + 0.45 + r * 0.95 + r2() * (w.edge === 'arbres' ? 1.4 : 0.6));
+          // (un bloc ou un tronc a son rayon : on le pose assez loin pour qu'il ne déborde pas sur la rubalise, et qu'une
+          // roue qui la frôle, dans une épingle, ne le touche pas)
+          const r = w.edge === 'arbres' ? 0.2 + r2() * 0.2 : 0.45 + r2() * r2() * 0.9;
+          const f = sample(s), u = side * (w.half + (w.edge === 'arbres' ? 0.55 + r : 0.45 + r * 0.95) + r2() * (w.edge === 'arbres' ? 1.4 : 0.6));
           const x = f.x + u * f.rx, z = f.z + u * f.rz;
           const ground = terrainHeight(x, z, f.d, Math.abs(u));
           if (w.edge === 'arbres') {
             if (treeNear(x, z, 0.8)) continue;
-            const t = { x, z, y: ground - 0.15, h: 11 + r2() * 12, r: 0.2 + r2() * 0.2, hue: r2(), kind: r2() < 0.85 ? 'sapin' : 'feuillu' };
+            const t = { x, z, y: ground - 0.15, h: 11 + r2() * 12, r, hue: r2(), kind: r2() < 0.85 ? 'sapin' : 'feuillu' };
             trees.push(t);
             const kk = key(Math.floor(x / TREE_CELL), Math.floor(z / TREE_CELL));
             let arr = treeGrid.get(kk);

@@ -1,8 +1,9 @@
 # Downhill
 
 Une manche de descente VTT chronométrée, comme en Coupe du monde, dans le navigateur. Le vélo est entièrement
-simulé : on dose les freins, le poids et l'inclinaison, et c'est le grip des pneus qui décide. Deux pistes : La Forêt
-(884 m) et La Grande Combe (2,3 km de haute montagne).
+simulé : on dose les freins, le poids et l'inclinaison, et c'est le grip des pneus qui décide. Cinq pistes : La Forêt
+(884 m), La Grande Combe (2,3 km de haute montagne), L'Avalanche (5 km, du glacier au village), Le Bike Park (1,2 km
+de gros sauts) et Le Single (un sentier étroit en épingles).
 
 ## Lancer le jeu
 
@@ -19,6 +20,7 @@ Puis ouvrir http://localhost:5180. Une manette est fortement conseillée : tout 
 | Poids en avant / en arrière | stick gauche ↕ | E / A |
 | Frein avant · frein arrière | gâchette droite · gauche | S ou ↓ (les deux), Maj (l'arrière seul) |
 | Se comprimer puis sauter | A (maintenir, relâcher) | Espace (maintenir, relâcher) |
+| Whip : coucher le vélo, en l'air | stick gauche ↔ | Q D (sans Espace) |
 | Figure, en l'air | A maintenu + stick (↓ backflip, ↑ frontflip, ↔ 360) | Espace maintenu + A, E, Q D |
 | Pédaler | X ou RB | Z ou ↑ |
 | Regarder autour | stick droit | |
@@ -30,7 +32,7 @@ Puis ouvrir http://localhost:5180. Une manette est fortement conseillée : tout 
 | Changer de piste (avant le départ) | sur l'écran d'aide ou dans les réglages | |
 | Réglages de la physique · pilote auto · aide | | G · P · H |
 
-Paramètres d'adresse utiles : `?carte=alpes` (La Grande Combe) ou `?carte=foret`, `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
+Paramètres d'adresse utiles : `?carte=alpes` (La Grande Combe), `?carte=foret`, `avalanche`, `bikepark` ou `single`, `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
 pilote auto tente la figure au saut d'arrivée), `?cam=chase` (vue extérieure), `?seed=12` (une autre forêt),
 `?qualite=basse` (ombres, antialiasing et forêt allégés, pour les petites cartes graphiques), `?depart=600&vitesse=13`
 (lancé à 600 m de la cabane). La résolution s'adapte aussi
@@ -67,6 +69,11 @@ pour que la tête passe. Les tables sont trop courtes.
 - En Normal, il suffit de lâcher le bouton une fois la moitié du tour passée : le pilote finit la rotation et se pose.
 - En Ultra-réaliste, il faut arrêter la rotation soi-même, en poussant le stick dans l'autre sens sans se dégrouper,
   puis se poser droit. Si le vélo tourne encore en touchant le sol, c'est la chute.
+
+Le **whip** : en l'air, sans se grouper, le stick sur le côté couche le vélo, comme les pros ; relâché, le pilote le
+redresse. C'est un geste du pilote : il ne change pas la trajectoire, l'affichage tourne le vélo autour des hanches (et
+les autres joueurs le voient en ligne). Un whip franc, redressé avant de se poser, compte comme une figure. Posé
+encore couché, on tombe en Ultra-réaliste ; en Normal, le pilote rattrape le vélo, mais la figure ne compte pas.
 
 ## Une manche
 
@@ -168,7 +175,16 @@ glacier du Pic Blanc). Le départ en ligne y est choisi par défaut : sept de fr
   le bike park et ses tables, le road gap.
 - Le village : une ruelle pavée entre les maisons de pierre, une volée de marches, l'arrivée sur la place.
 
-Une piste aussi longue n'a de relief détaillé (avec sa physique), d'arbres et de décor que dans une bande de 60 m
+**Le Bike Park** (1,2 km, environ 1 min 30, quatre intermédiaires). Un alpage régulier à 21 %, une dizaine de gros
+sauts reliés par des berms (des virages relevés, qu'on prend vite) : la ligne des trois tables, un step-down et le
+grand gap, deux doubles, des bosses et un road gap, et le Big One devant l'arrivée, le plus gros saut du jeu (près
+d'une seconde et demie en l'air), pour un backflip, un 360 ou un gros whip.
+
+**Le Single** (environ 550 m, 1 min, trois intermédiaires). Un sentier dans les sapins sur une pente à 38 %, à peine
+plus large qu'un guidon : 2,2 m entre les rubalises presque de bout en bout, les troncs qui les frôlent. Sept
+épingles de 11 m de rayon reliées par des traversées, des racines, un pierrier bordé de blocs, une petite marche.
+
+Une piste aussi longue que L'Avalanche n'a de relief détaillé (avec sa physique), d'arbres et de décor que dans une bande de 60 m
 autour d'elle ; au-delà, le relief lointain. Le glacier, la remontée, le gué, les marches et le village sont des
 modules de la carte (`src/sim/maps.js`), comme les sauts. Les passages étroits aussi (`narrow`) : la rubalise se
 resserre à moins de 3 m, la trace à 1,5 m, et les bords se garnissent de troncs ou de blocs, de vrais obstacles.

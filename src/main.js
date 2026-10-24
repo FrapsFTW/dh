@@ -19,7 +19,7 @@ import { createSpeedParticles } from './render/speedFx.js';
 import { loadPeloton, createPeloton } from './render/peloton.js';
 import { PLAYER, gridSlots, poseOf } from './sim/peloton.js';
 import { joinSalon, serverUrl, newCode, validCode, playerId, KITS } from './net/online.js';
-import { createRemoteRiders, DELAY } from './render/remote.js';
+import { createRemoteRiders, DELAY, whipStyle } from './render/remote.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -317,6 +317,7 @@ function restart(online = null) {
 if (!auto && !params.has('depart')) showMessage('', startHint(), 9999, true);
 
 const HOLD = { steer: 0, brakeFront: 1, brakeRear: 1, pedal: 0, weight: 0, hop: false };
+const myWhip = { q: new THREE.Quaternion(), pivot: new THREE.Vector3() }; // le vélo couché en l'air (voir render/remote.js)
 const STOP = { steer: 0, brakeFront: 0.35, brakeRear: 0.6, pedal: 0, weight: -0.3, hop: false };
 
 // ----- Le fantôme : le meilleur run, rejoué au même chrono -----
@@ -797,7 +798,7 @@ function frame(now) {
 
   // Affichage.
   const st = sim.renderState(acc / STEP);
-  bikeModel.update(st, dt, rig.mode === 'fp');
+  bikeModel.update(st, dt, rig.mode === 'fp', whipStyle(st, myWhip));
   updateGhost(dt);
   rig.update(st, dt, input.look);
   // Caméra de bord de piste (captures) : posée, elle suit un rival ou le joueur. Posée avant les rivaux (qui en ont
@@ -823,7 +824,7 @@ function frame(now) {
     if (sendTimer <= 0 && net.status === 'ok' && phase !== 'hut') {
       sendTimer += 1 / SEND_RATE;
       if (sendTimer < 0) sendTimer = 0;
-      net.send({ t: 'pose', at: Math.round(net.now()), rt: netRace && race.state === 'course' ? Math.round(race.time * 1000) / 1000 : null, p: poseOf(sim).map((v) => Math.round(v * 1e4) / 1e4) });
+      net.send({ t: 'pose', at: Math.round(net.now()), rt: netRace && race.state === 'course' ? Math.round(race.time * 1000) / 1000 : null, p: [...poseOf(sim), sim.bike.whip].map((v) => Math.round(v * 1e4) / 1e4) });
     }
     remote.update(net.now() - DELAY, dt, camera);
     if (netRace && race.state === 'course' && (!myHist.length || race.time - myHist[myHist.length - 2] > 0.1)) myHist.push(race.time, race.s);

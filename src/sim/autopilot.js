@@ -22,8 +22,14 @@ export function autopilot(sim, opts = {}) {
   const fl = Math.hypot(fx, fz) || 1;
   fx /= fl; fz /= fl;
 
-  // Poursuite d'un point du tracé, assez proche pour ne pas couper les virages.
-  const Ld = 5 + v * (opts.look ?? 0.6);
+  // Poursuite d'un point du tracé, assez proche pour ne pas couper les virages. Dans un passage étroit, plus proche
+  // encore (et dès qu'il arrive, pour y entrer bien placé) : entre les troncs, couper une épingle d'un mètre, c'est
+  // finir dedans. Seulement à l'approche d'un virage serré : en ligne droite, viser si près le fait louvoyer, et à
+  // 30 km/h, entre les troncs, un louvoiement qui grandit finit aussi dedans.
+  let kAhead = 0;
+  for (let d = 0; d <= 16; d += 4) kAhead = Math.max(kAhead, Math.abs(track.sample(race.s + d).k));
+  const tight = Math.max(track.narrowAt(race.s).k, track.narrowAt(race.s + 12).k) * smoothstep(0.03, 0.07, kAhead);
+  const Ld = (5 + v * (opts.look ?? 0.6)) * (1 - tight) + (3 + v * 0.45) * tight;
   const look = track.sample(race.s + Ld);
   if (opts.line) { const u = opts.line(race.s + Ld); look.x += look.rx * u; look.z += look.rz * u; }
   const pace = opts.pace || 1;
@@ -62,7 +68,9 @@ export function autopilot(sim, opts = {}) {
   for (let d = 0; d < horizon; d += 2) {
     const f = track.sample(race.s + d);
     const k = Math.abs(f.k);
-    const lat = Math.min(TURN_GRIP * pace * (1 + (boost - 1) * (opts.turnBoost ?? 0)), opts.gripMax ?? Infinity) + camber(Math.sign(f.k) * f.bank) * 0.6; // un virage relevé se passe plus vite
+    // (dans un passage étroit, même un rival enroule prudemment : pas la place de s'écarter)
+    const engage = 1 + (boost - 1) * (opts.turnBoost ?? 0) * (1 - track.narrowAt(race.s + d).k);
+    const lat = Math.min(TURN_GRIP * pace * engage, opts.gripMax ?? Infinity) + camber(Math.sign(f.k) * f.bank) * 0.6; // un virage relevé se passe plus vite
     const vTurn = Math.sqrt((lat * G) / Math.max(k, 1e-3));
     vmax = Math.min(vmax, Math.sqrt(vTurn * vTurn + 2 * decelTo(d) * d));
   }
