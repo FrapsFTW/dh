@@ -34,12 +34,12 @@ export function airs(run) {
   return out;
 }
 
-// Le nom au-dessus du casque.
-function tagSprite(rider) {
+// Le nom au-dessus du casque (label : le texte affiché, sinon « T. VARENNE »).
+export function tagSprite(rider, label) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 56;
   const g = c.getContext('2d');
-  const short = `${rider.name.split(' ')[0][0]}. ${rider.name.split(' ').slice(1).join(' ').toUpperCase()}`;
+  const short = label ?? `${rider.name.split(' ')[0][0]}. ${rider.name.split(' ').slice(1).join(' ').toUpperCase()}`;
   g.fillStyle = 'rgba(10,12,16,0.62)';
   g.beginPath(); g.roundRect(2, 6, 252, 44, 10); g.fill();
   g.fillStyle = rider.kit.jersey; g.fillRect(12, 14, 34, 28);

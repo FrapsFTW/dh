@@ -48,7 +48,8 @@ export class Input {
     this.padName = '';
     this.look = { x: 0, y: 0 };
     addEventListener('keydown', (e) => {
-      if (e.target && e.target.closest && e.target.closest('.lil-gui')) return;
+      // (pas quand on tape dans un champ : les réglages, son nom dans le salon en ligne)
+      if (e.target && e.target.closest && e.target.closest('.lil-gui, input')) return;
       if (!this.down.has(e.code)) this.pressed.add(e.code);
       this.down.add(e.code);
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace'].includes(e.code)) e.preventDefault();

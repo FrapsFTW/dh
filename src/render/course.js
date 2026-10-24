@@ -63,7 +63,7 @@ function personGeometry(pose, look) {
     parts.push(g.index ? g.toNonIndexed() : g);
   };
   // Un volume tourné d'après un profil [[rayon, hauteur], …], aplati en profondeur.
-  const lathe = (profile, depth = 0.72, seg = 12) => {
+  const lathe = (profile, depth = 0.72, seg = 9) => {
     const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), seg);
     g.scale(1, 1, depth);
     return g;
@@ -71,13 +71,13 @@ function personGeometry(pose, look) {
   // Un membre : un tronc de cône d'un point à un autre.
   const limb = (a, b, ra, rb) => {
     const d = new THREE.Vector3().subVectors(b, a), len = d.length();
-    const g = new THREE.CylinderGeometry(rb, ra, len, 8, 1);
+    const g = new THREE.CylinderGeometry(rb, ra, len, 6, 1, true);
     g.translate(0, len / 2, 0);
     g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
     g.translate(a.x, a.y, a.z);
     return g;
   };
-  const ball = (p, r, sx = 1, sy = 1, sz = 1) => { const g = new THREE.SphereGeometry(r, 10, 8); g.scale(sx, sy, sz); g.translate(p.x, p.y, p.z); return g; };
+  const ball = (p, r, sx = 1, sy = 1, sz = 1, seg = 6) => { const g = new THREE.SphereGeometry(r, seg + 2, seg); g.scale(sx, sy, sz); g.translate(p.x, p.y, p.z); return g; };
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const skin = SKINS[look % SKINS.length], pants = PANTS[(look >> 1) % PANTS.length], hair = HAIR[(look + 1) % HAIR.length], white = new THREE.Color(1, 1, 1);
   const shoe = lin('#2b2b2b');
@@ -86,7 +86,6 @@ function personGeometry(pose, look) {
   for (const s of [-1, 1]) {
     const hip = V(s * 0.095, 0.93, 0), knee = V(s * 0.11, 0.5, 0.02), ankle = V(s * 0.12, 0.09, 0);
     paint(limb(hip, knee, 0.085, 0.058), pants);
-    paint(ball(knee, 0.058), pants);
     paint(limb(knee, ankle, 0.058, 0.042), pants);
     const foot = new THREE.BoxGeometry(0.1, 0.08, 0.26, 1, 1, 2); foot.translate(s * 0.12, 0.045, 0.05); paint(foot, shoe);
   }
@@ -107,9 +106,8 @@ function personGeometry(pose, look) {
     const sh = V(s * 0.2, 1.42, 0);
     paint(ball(sh, 0.062), white, 1);
     paint(limb(sh, elbow, 0.058, 0.046), white, 1);
-    paint(ball(elbow, 0.046), white, 1);
     paint(limb(elbow, wrist, 0.046, 0.036), white, 1);
-    paint(ball(wrist.clone().add(V(0, -0.02, 0)), 0.042, 0.8, 1.2, 0.9), skin);
+    paint(ball(wrist.clone().add(V(0, -0.02, 0)), 0.042, 0.8, 1.2, 0.9, 4), skin);
   };
   for (const s of [-1, 1]) {
     if (pose === 0) arm(s, V(s * 0.24, 1.14, -0.01), V(s * 0.23, 0.86, 0.04));
@@ -132,6 +130,7 @@ export function createCourse(sim, sunDir, { groundTextures = null } = {}) {
   group.name = 'course';
   const rand = rng(track.seed + 202);
   const dynamic = []; // ce qui bouge (rubalise au vent, écrans)
+  const nearOnly = []; // ce qui ne se dessine que de près (le public, par zones)
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
   const arena = track.features.find((f) => f.type === 'arena');
@@ -896,10 +895,14 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
     dynamic.push((t) => { mat.userData.time.value = t; });
     // Des vestes de montagne : quelques couleurs vives, beaucoup de teintes sourdes.
     const shirts = ['#c8352a', '#2d5e9e', '#e0b23a', '#3f7d4e', '#e8e6df', '#e26a2c', '#5b4b8a', '#26282c', '#7d8a95', '#8a6a4a', '#34536b', '#a33c5c'].map(lin);
-    geos.forEach((geo, gi) => {
-      const mine = people.filter((_, i) => i % geos.length === gi);
-      if (!mine.length) return;
-      const crowd = new THREE.InstancedMesh(geo, mat, mine.length);
+    const ZONE = 120, zones = new Map();
+    people.forEach((pp, i) => {
+      const key = `${Math.floor(pp.pos.x / ZONE)}|${Math.floor(pp.pos.z / ZONE)}|${i % geos.length}`;
+      if (!zones.has(key)) zones.set(key, []);
+      zones.get(key).push(pp);
+    });
+    for (const [key, mine] of zones) {
+      const crowd = new THREE.InstancedMesh(geos[+key.split('|')[2]], mat, mine.length);
       mine.forEach((pp, i) => {
         q.setFromAxisAngle(up, pp.yaw);
         const sz = 0.92 + rand() * 0.16;
@@ -908,8 +911,10 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
       });
       crowd.castShadow = true;
       crowd.computeBoundingSphere();
+      crowd.name = 'public';
       group.add(crowd);
-    });
+      nearOnly.push({ mesh: crowd, x: crowd.boundingSphere.center.x, z: crowd.boundingSphere.center.z, range: 350 + crowd.boundingSphere.radius });
+    }
   }
 
   // ---------- Protections sur les arbres proches de la piste, panneaux avant les virages ----------
@@ -955,6 +960,9 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
     group,
     startClock: group.userData.startClock,
     finishScreen: group.userData.finishScreen,
-    update(t) { for (const f of dynamic) f(t); },
+    update(t, camera) {
+      for (const f of dynamic) f(t);
+      if (camera) for (const e of nearOnly) e.mesh.visible = Math.hypot(e.x - camera.position.x, e.z - camera.position.z) < e.range;
+    },
   };
 }

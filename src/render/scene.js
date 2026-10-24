@@ -96,7 +96,7 @@ export function createScene(sim, { low = false, renderer, groundTextures, massif
       sky.update(camera, t);
       vegetation.update(t, camera);
       forest.update(camera, t);
-      course.update(t);
+      course.update(t, camera);
     },
   };
 }

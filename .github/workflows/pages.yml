@@ -20,6 +20,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # l'adresse du serveur des salons (jeu en ligne) : la variable SERVEUR du dépôt, voir le README
+          VITE_SERVEUR: ${{ vars.SERVEUR }}
       - name: Publier dist/ sur gh-pages
         run: |
           cd dist

@@ -2,8 +2,9 @@
 // Poly Haven), allégés, puis dessinés en instances.
 // - Quelques variantes (sapins, feuillus), générées au lancement à une hauteur de 1 : chaque arbre de la piste en
 //   prend une, à sa taille, tournée et teintée au hasard.
-// - Près du pilote (et devant lui), le vrai modèle, avec ses ombres ; au-delà, un imposteur : deux plans croisés
-//   portant la photo de la variante, prise au lancement. Les listes sont refaites à chaque image (2 000 à 3 000
+// - Près du pilote (et devant lui), le vrai modèle, avec ses ombres ; un peu plus loin, le même arbre au feuillage
+//   allégé (une feuille sur trois, agrandie) ; au-delà, un imposteur : deux plans croisés portant la photo de la
+//   variante, prise au lancement. Les listes sont refaites à chaque image (2 000 à 3 000
 //   arbres : c'est très rapide), ce qui garde un seul appel de dessin par variante.
 // - En montagne, sur le relief lointain, des milliers d'imposteurs fixes, là où ce relief est boisé.
 
@@ -94,6 +95,40 @@ function foliageNormals(g) {
   g.setAttribute('normal', new THREE.BufferAttribute(n, 3));
 }
 
+/**
+ * Le feuillage allégé, pour la distance moyenne : une feuille sur `keep` (chaque feuille d'EZ-Tree est un double panneau,
+ * 8 sommets et 12 indices), agrandie autour de son point d'attache pour garder le même volume. La silhouette ne
+ * change pas : ce sont les mêmes feuilles, moins nombreuses.
+ */
+function thinLeaves(geo, keep) {
+  const p = geo.attributes.position, n = geo.attributes.normal, uv = geo.attributes.uv;
+  const leaves = p.count / 8, kept = Math.ceil(leaves / keep), grow = Math.sqrt(keep) * 0.92;
+  const pos = new Float32Array(kept * 24), nrm = new Float32Array(kept * 24), uvs = new Float32Array(kept * 16), idx = [];
+  let o = 0;
+  for (let l = 0; l < leaves; l += keep, o++) {
+    const b = l * 8;
+    // Le point d'attache : le milieu du bas du premier panneau (sommets 1 et 2).
+    const ax = (p.getX(b + 1) + p.getX(b + 2)) / 2, ay = (p.getY(b + 1) + p.getY(b + 2)) / 2, az = (p.getZ(b + 1) + p.getZ(b + 2)) / 2;
+    for (let v = 0; v < 8; v++) {
+      const i = o * 8 + v;
+      pos[i * 3] = ax + (p.getX(b + v) - ax) * grow;
+      pos[i * 3 + 1] = ay + (p.getY(b + v) - ay) * grow;
+      pos[i * 3 + 2] = az + (p.getZ(b + v) - az) * grow;
+      nrm[i * 3] = n.getX(b + v); nrm[i * 3 + 1] = n.getY(b + v); nrm[i * 3 + 2] = n.getZ(b + v);
+      uvs[i * 2] = uv.getX(b + v); uvs[i * 2 + 1] = uv.getY(b + v);
+    }
+    const g = o * 8;
+    idx.push(g, g + 1, g + 2, g, g + 2, g + 3, g + 4, g + 5, g + 6, g + 4, g + 6, g + 7);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  out.setIndex(idx);
+  out.computeBoundingSphere();
+  return out;
+}
+
 /** La photo d'une variante, de face, sur fond transparent : la texture de son imposteur. */
 function captureImpostor(renderer, bark, leaves, size) {
   const W = 256, H = 512;
@@ -148,7 +183,8 @@ export function createForest(track, renderer, { low = false } = {}) {
   const group = new THREE.Group();
   group.name = 'foret';
   const uniforms = { uTime: { value: 0 } };
-  const NEAR = low ? 55 : 95; // jusqu'où on dessine le vrai modèle
+  const NEAR = low ? 22 : 35; // jusqu'où on dessine le vrai modèle
+  const MID = low ? 45 : 70; // puis son feuillage allégé, jusqu'ici (au-delà, l'imposteur)
   const rand = rng(track.seed + 77);
 
   // ----- Les variantes -----
@@ -169,7 +205,8 @@ export function createForest(track, renderer, { low = false } = {}) {
         color: kind === 'sapin' ? lin('#dbe6c8') : lin('#e2ead0'),
       });
       addWind(leafMat, uniforms, kind === 'sapin' ? 0.008 : 0.012);
-      return { kind, barkGeo, leafGeo, barkMat, leafMat, size, tris: (barkGeo.index.count + leafGeo.index.count) / 3 };
+      const midLeafGeo = thinLeaves(leafGeo, 3);
+      return { kind, barkGeo, leafGeo, midLeafGeo, barkMat, leafMat, size, tris: (barkGeo.index.count + leafGeo.index.count) / 3, midTris: (barkGeo.index.count + midLeafGeo.index.count) / 3 };
     });
   }
 
@@ -214,8 +251,11 @@ export function createForest(track, renderer, { low = false } = {}) {
   for (const [variant, list] of perVariant) {
     const bark = new THREE.InstancedMesh(variant.barkGeo, variant.barkMat, list.length);
     const leaves = new THREE.InstancedMesh(variant.leafGeo, variant.leafMat, list.length);
-    for (const mesh of [bark, leaves]) {
-      mesh.castShadow = true;
+    const midBark = new THREE.InstancedMesh(variant.barkGeo, variant.barkMat, list.length);
+    const midLeaves = new THREE.InstancedMesh(variant.midLeafGeo, variant.leafMat, list.length);
+    for (const mesh of [bark, leaves, midBark, midLeaves]) {
+      // (à mi-distance, pas d'ombre portée : elle tomberait hors de la zone nette, et coûterait autant que l'arbre)
+      mesh.castShadow = mesh === bark || mesh === leaves;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false; // la liste suit la caméra
       mesh.count = 0;
@@ -244,7 +284,7 @@ export function createForest(track, renderer, { low = false } = {}) {
     // Les teintes, une fois pour toutes (dans l'ordre de la liste ; on recopie au besoin).
     const maps = [variant.barkMat.map, variant.leafMat.map].filter(Boolean);
     slots.push({
-      list, bark, leaves, far, ready: false,
+      list, bark, leaves, midBark, midLeaves, far, ready: false,
       tryCapture() {
         if (!maps.every((m) => m.image && m.image.width > 0)) return;
         impMat.map = captureImpostor(renderer, { geometry: variant.barkGeo, material: variant.barkMat }, { geometry: variant.leafGeo, material: variant.leafMat }, variant.size).texture;
@@ -257,20 +297,20 @@ export function createForest(track, renderer, { low = false } = {}) {
 
   const tmpColor = new THREE.Color();
   const fwd = new THREE.Vector3();
-  let detailed = 0;
+  let detailed = 0, mid = 0;
   return {
     group,
-    get stats() { return { variants: slots.length, detailed, trianglesPerTree: Object.values(kinds).flat().map((k) => Math.round(k.tris)) }; },
+    get stats() { return { variants: slots.length, detailed, mid, trianglesPerTree: Object.values(kinds).flat().map((k) => Math.round(k.tris)), midTriangles: Object.values(kinds).flat().map((k) => Math.round(k.midTris)) }; },
     /** À chaque image : qui est dessiné en détail, qui en imposteur. */
     update(camera, t) {
       uniforms.uTime.value = t;
       camera.getWorldDirection(fwd);
       const cx = camera.position.x, cz = camera.position.z;
       const fx = fwd.x, fz = fwd.z, fl = Math.hypot(fx, fz) || 1;
-      detailed = 0;
+      detailed = 0; mid = 0;
       for (const s of slots) {
         if (!s.ready) s.tryCapture();
-        let n = 0, nf = 0;
+        let n = 0, nm = 0, nf = 0;
         for (const tr of s.list) {
           const dx = tr.x - cx, dz = tr.z - cz, d2 = dx * dx + dz * dz;
           const d = Math.sqrt(d2);
@@ -281,15 +321,19 @@ export function createForest(track, renderer, { low = false } = {}) {
             s.bark.setMatrixAt(n, tr.matrix); s.leaves.setMatrixAt(n, tr.matrix);
             s.bark.setColorAt(n, tmpColor.copy(tr.color)); s.leaves.setColorAt(n, tr.color);
             n++;
+          } else if (d < MID) {
+            s.midBark.setMatrixAt(nm, tr.matrix); s.midLeaves.setMatrixAt(nm, tr.matrix);
+            s.midBark.setColorAt(nm, tmpColor.copy(tr.color)); s.midLeaves.setColorAt(nm, tr.color);
+            nm++;
           } else {
             s.far.setMatrixAt(nf, tr.matrix); s.far.setColorAt(nf, tr.color);
             nf++;
           }
         }
-        s.bark.count = s.leaves.count = n;
+        s.bark.count = s.leaves.count = n; s.midBark.count = s.midLeaves.count = nm;
         s.far.count = s.ready ? nf : 0;
-        detailed += n;
-        for (const m of [s.bark, s.leaves, s.far]) {
+        detailed += n; mid += nm;
+        for (const m of [s.bark, s.leaves, s.midBark, s.midLeaves, s.far]) {
           m.instanceMatrix.needsUpdate = true;
           if (m.instanceColor) m.instanceColor.needsUpdate = true;
         }

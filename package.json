@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/sim.test.mjs",
+    "test": "node --test tests/sim.test.mjs tests/salon.test.mjs",
     "shots": "node tools/shots.mjs",
     "trace": "node tools/trace.mjs auto 200",
     "prepare-bike": "node tools/prepare-bike.mjs 20261018170123_b442c697.glb"

@@ -253,6 +253,31 @@ normal = dh_perturbNormal(-vViewPosition, normal, gH * 0.012 * bumpFade, faceDir
   return mat;
 }
 
+/**
+ * Un maillage découpé en tronçons de triangles voisins (ils sont rangés le long de la piste, ou rangée par rangée) :
+ * chaque tronçon a sa sphère englobante, et la carte graphique ne reçoit que ceux qui sont dans le champ. Les sommets
+ * restent partagés (envoyés une seule fois).
+ */
+function chunked(geo, material, name, trisPerChunk = 12000) {
+  const group = new THREE.Group();
+  group.name = name;
+  const index = geo.index.array, pos = geo.attributes.position.array, total = index.length / 3;
+  for (let t0 = 0; t0 < total; t0 += trisPerChunk) {
+    const sub = index.slice(t0 * 3, Math.min(total, t0 + trisPerChunk) * 3);
+    const box = new THREE.Box3(), v = new THREE.Vector3();
+    for (const k of sub) box.expandByPoint(v.set(pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]));
+    const g = new THREE.BufferGeometry();
+    for (const [k, a] of Object.entries(geo.attributes)) g.setAttribute(k, a);
+    g.setIndex(new THREE.BufferAttribute(sub, 1));
+    g.boundingBox = box;
+    g.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
+    const m = new THREE.Mesh(g, material);
+    m.receiveShadow = true;
+    group.add(m);
+  }
+  return group;
+}
+
 /** Les deux maillages du sol, prêts à afficher. tex : les photos du sol (loadGroundTextures). */
 export function createGround(sim, tex, { low = false } = {}) {
   const { track, terrain, ribbon } = sim;
@@ -285,8 +310,7 @@ export function createGround(sim, tex, { low = false } = {}) {
   }
   tg.setAttribute('extra', new THREE.BufferAttribute(tExtra, 3));
   tg.computeVertexNormals();
-  const terrainMesh = new THREE.Mesh(tg, material());
-  terrainMesh.receiveShadow = true;
+  const terrainMesh = chunked(tg, material(), 'relief');
 
   const rg = new THREE.BufferGeometry();
   rg.setAttribute('position', new THREE.BufferAttribute(ribbon.positions, 3));
@@ -314,8 +338,7 @@ export function createGround(sim, tex, { low = false } = {}) {
   ribbonMat.polygonOffset = true;
   ribbonMat.polygonOffsetFactor = -1;
   ribbonMat.polygonOffsetUnits = -2;
-  const ribbonMesh = new THREE.Mesh(rg, ribbonMat);
-  ribbonMesh.receiveShadow = true;
+  const ribbonMesh = chunked(rg, ribbonMat, 'piste');
 
   const far = env.far ? createFarTerrain(track, terrain, env, material) : null;
   return { terrainMesh, ribbonMesh, forestAt, far };

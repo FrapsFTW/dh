@@ -85,14 +85,52 @@ haut à droite : la place, et l'écart avec le rival de devant et celui de derri
 rivaux passent au travers du joueur (pas de collisions). Ce départ a son propre record. Pour l'ouvrir directement :
 `?peloton`.
 
-Chaque rival est une descente du pilote automatique, enregistrée à l'avance avec son attaque en virage, son côté de
-piste préféré et son temps de réaction (`src/sim/peloton.js`), puis rejouée au même chrono que le joueur. En l'air,
+Chaque rival est une descente du pilote automatique, enregistrée à l'avance avec son attaque, son côté de piste
+préféré et son temps de réaction (`src/sim/peloton.js`), puis rejouée au même chrono que le joueur. Son engagement
+(`attack`) lui fait lâcher les freins bien plus que le pilote auto des tests : plus vite en ligne droite, freinages
+plus tardifs, bosses et racines passées lancé, pédalage jusqu'à 47 km/h, sauts abordés à la dernière seconde ;
+dans les cailloux, il reste prudent (c'est là qu'on tombe). Il se replace avant un goulet, pas dedans. Il ne
+touche jamais la rubalise : sinon, sa descente est refaite. En l'air,
 certains font des whips ou des tables ; après la ligne, chacun freine jusqu'à sa place et pose le pied. Si une piste
 change, il faut réenregistrer son peloton (le test le signale) :
 
 ```sh
 node tools/peloton.mjs [piste…]   # → public/peloton/<piste>.bin, une descente par rival, en parallèle
 ```
+
+## Jouer en ligne
+
+Avec ses potes, jusqu'à huit, chacun sur son ordinateur. Sur l'écran d'accueil (H), « Créer un salon » donne un code
+de cinq lettres et un lien à envoyer (`?salon=CODE`) ; les autres l'ouvrent, ou tapent le code. Le premier arrivé est
+l'hôte : il choisit la piste (tout le monde la charge) et le mode, puis lance la course. Tout le monde part au même GO,
+sur une grille comme le départ en ligne : le compte à rebours est réglé sur l'heure du serveur, que chacun estime au
+départ. Pendant la course, on voit les autres rouler (on passe au travers), sa place et l'écart avec celui de devant et
+celui de derrière ; à l'arrivée, le classement se complète à mesure que les autres arrivent, et l'hôte relance. Entrée
+pendant une course en ligne, c'est abandonner. Le nom et la couleur de la tenue se choisissent dans le salon.
+
+Chacun envoie sa pose (le même échantillon que les rivaux du peloton) quinze fois par seconde ; les autres l'affichent
+avec 160 ms de retard, entre deux poses reçues (`src/render/remote.js`). Le serveur des salons (`server/`) ne fait que
+garder le salon (les joueurs, l'hôte, la piste, le départ, les temps) et relayer les poses : ses règles sont dans
+`server/src/salon.js` (testées par `npm test`), branchées sur un Worker Cloudflare et un Durable Object par salon
+(`server/src/index.js`). L'offre gratuite de Cloudflare suffit largement entre potes.
+
+Mettre le serveur en ligne (une fois) :
+
+```sh
+cd server
+npm install
+npx wrangler login     # ouvre le navigateur : se connecter à son compte Cloudflare (gratuit)
+npx wrangler deploy    # affiche l'adresse du serveur : https://dh-salons.<compte>.workers.dev
+```
+
+Le jeu en ligne joint `wss://dh-salons.downhill.workers.dev` (`SERVEUR`, dans `src/net/online.js`). Pour un autre
+serveur : la variable `SERVEUR` du dépôt GitHub (Settings → Secrets and variables → Actions → Variables), que la mise
+en ligne passe à la compilation, ou `?serveur=wss://…` dans l'adresse du jeu.
+
+`npm run dev` joint aussi ce serveur. Pour un serveur sur sa machine, `?serveur=local` (`ws://localhost:8787`) :
+`node server/dev.mjs` (les mêmes règles, sur
+un serveur Node ; après un `npm install` dans `server/`) ou `cd server && npx wrangler dev` (le vrai Worker ; sous Windows, il lui faut les bibliothèques
+Visual C++ de Microsoft). Pour essayer à deux sur une machine : deux fenêtres (chaque onglet est un joueur).
 
 ## Les pistes
 
@@ -192,7 +230,8 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
 - `src/render/rocks.js` : les rochers (blocs taillés par des plans de fracture, photo de roche projetée sur trois
   plans, lichen ou mousse dessus, pied assombri) et la glace des séracs.
 - `src/render/trees.js` : la forêt. Sapins et feuillus générés par EZ-Tree au lancement, dessinés en instances ;
-  le vrai modèle près du pilote, un imposteur (sa photo sur deux plans croisés) au loin, et des milliers
+  le vrai modèle jusqu'à 35 m, avec ses ombres ; jusqu'à 70 m, le même arbre au feuillage allégé (une feuille sur
+  trois, agrandie), sans ombre ; au-delà, un imposteur (sa photo sur deux plans croisés), et des milliers
   d'imposteurs sur le relief lointain. En montagne, les arbres s'arrêtent à une altitude, en rapetissant.
 - `src/render/vegetation.js` : herbes, fleurs, fougères, rochers, troncs couchés. Les touffes ont des bords doux
   (alpha-to-coverage) et s'allument à contre-jour ; en altitude, l'herbe jaunit.

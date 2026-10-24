@@ -17,7 +17,9 @@ import { createCameraRig, CAMERA_SETTINGS } from './render/cameraRig.js';
 import { createPost, SPEED_FX } from './render/post.js';
 import { createSpeedParticles } from './render/speedFx.js';
 import { loadPeloton, createPeloton } from './render/peloton.js';
-import { PLAYER, gridSlots } from './sim/peloton.js';
+import { PLAYER, gridSlots, poseOf } from './sim/peloton.js';
+import { joinSalon, serverUrl, newCode, validCode, playerId, KITS } from './net/online.js';
+import { createRemoteRiders, DELAY } from './render/remote.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -29,6 +31,8 @@ const fmt = (t) => {
   const m = Math.floor(t / 60), s = t - m * 60;
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 };
+// Le jeu en ligne : ?salon=CODE rejoint un salon (voir src/net/online.js).
+const salonCode = validCode(params.get('salon')) ? params.get('salon').toUpperCase() : null;
 const fmtDelta = (d) => `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)}`;
 // La piste : ?carte=alpes, sinon la dernière choisie. En changer recharge la page (tout est reconstruit).
 const MAP_KEY = 'downhill.carte';
@@ -44,7 +48,11 @@ function switchMap(m) {
 // Un record par piste et par mode (les temps ne se comparent pas d'un mode à l'autre), et à part en départ en ligne
 // (le chrono y part au GO, sur la grille). La forêt garde ses anciens records.
 let pelotonOn = false;
-const bestKey = (m) => `${mapId === 'foret' ? `downhill.record.v3.${m}` : `downhill.record.v3.${mapId}.${m}`}${pelotonOn ? '.peloton' : ''}`;
+let net = null; // le salon en ligne (src/net/online.js), ou null
+let netRace = null; // la course en ligne où je suis partant : { id, at (heure du serveur du GO), slot, n }
+const myHist = []; // (temps, distance) de ma course en ligne, pour l'écart avec celui de derrière
+function isHost() { return !!(net && net.room && net.room.host === net.you); }
+const bestKey = (m) => `${mapId === 'foret' ? `downhill.record.v3.${m}` : `downhill.record.v3.${mapId}.${m}`}${pelotonOn || netRace ? '.peloton' : ''}`;
 const loadBest = (m) => { try { return JSON.parse(localStorage.getItem(bestKey(m))) || null; } catch { return null; } };
 const saveBest = (m, b) => { try { localStorage.setItem(bestKey(m), JSON.stringify(b)); } catch { /* stockage indisponible */ } };
 const MODE_KEY = 'downhill.mode';
@@ -98,7 +106,7 @@ const peloton = pelotonRuns ? createPeloton(world.scene, pelotonRuns) : null;
 const grid = gridSlots(track);
 {
   const saved = (() => { try { return localStorage.getItem(PELOTON_KEY); } catch { return null; } })();
-  pelotonOn = !!peloton && !params.has('depart') && (params.has('peloton') ? params.get('peloton') !== '0' : saved !== null ? saved === '1' : !!(track.map.peloton && track.map.peloton.default));
+  pelotonOn = !!peloton && !params.has('depart') && !salonCode && (params.has('peloton') ? params.get('peloton') !== '0' : saved !== null ? saved === '1' : !!(track.map.peloton && track.map.peloton.default));
 }
 let goTime = null; // sim.time au GO du départ en ligne
 const camera = new THREE.PerspectiveCamera(CAMERA_SETTINGS.fov, innerWidth / innerHeight, 0.05, world.viewDistance);
@@ -115,6 +123,11 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 });
+// Tous les matériaux compilés maintenant (arbres, fougères, public…) : sinon chacun se compile la première fois qu'il
+// entre dans le champ, et l'image se fige un instant (en entrant dans la forêt, par exemple).
+await loading('Préparation des matériaux…', 0.95);
+await renderer.compileAsync(world.scene, camera);
+await renderer.compileAsync(world.farScene, camera);
 await loading('C\'est parti', 1);
 
 // ----- Réglages en jeu (touche G) -----
@@ -179,8 +192,8 @@ let countdown = 0, lastBeep = 0;
 function placeStart() {
   sim.reset();
   goTime = null;
-  if (!pelotonOn) return;
-  const g = grid[PLAYER.slot];
+  if (!pelotonOn && !netRace) return;
+  const g = netRace ? gridSlots(track, netRace.n)[netRace.slot] : grid[PLAYER.slot];
   sim.bike.placeOnTrack(g.s, 0, g.u);
   // La grille est après l'arche : le chrono partira au GO, pas en la franchissant.
   Object.assign(sim.race, { s: g.s, u: g.u, reached: g.s, next: track.gates.findIndex((x) => x.kind !== 'depart' && x.s > g.s) });
@@ -218,8 +231,12 @@ function showMessage(big, small = '', seconds = 1.5, pill = false) {
 }
 
 /** Change de mode : les réglages, le record et son fantôme. La manche recommence. */
-function setMode(m) {
+function setMode(m, fromRoom = false) {
   if (!MODE_IDS.includes(m)) return;
+  if (net && !fromRoom) {
+    if (!isHost()) { showMessage('', 'En ligne, c\'est l\'hôte qui choisit le mode', 1.8, true); modeChoice.mode = mode; return; }
+    net.send({ t: 'config', mode: m });
+  }
   mode = m;
   try { localStorage.setItem(MODE_KEY, m); } catch { /* stockage indisponible */ }
   sim.setMode(m);
@@ -239,16 +256,19 @@ function updateModeUI() {
   $('mapBlurb').textContent = MAPS[mapId].blurb;
   for (const b of document.querySelectorAll('[data-start]')) {
     b.classList.toggle('on', (b.dataset.start === 'peloton') === pelotonOn);
-    b.disabled = b.dataset.start === 'peloton' && !peloton;
+    b.disabled = (b.dataset.start === 'peloton' && !peloton) || !!net;
   }
-  $('startBlurb').textContent = !peloton ? 'Pas encore de peloton sur cette piste.'
+  // (en ligne, la piste et le mode sont ceux de l'hôte)
+  for (const b of document.querySelectorAll('[data-map], [data-mode]')) b.disabled = !!net && !isHost();
+  $('startBlurb').textContent = net ? "En ligne : départ commun sur la grille, donné par l'hôte du salon (sans le peloton)."
+    : !peloton ? 'Pas encore de peloton sur cette piste.'
     : pelotonOn ? `Départ en ligne avec ${peloton.riders.length} rivaux. Le chrono part au GO pour tout le monde ; tu as le dossard ${PLAYER.num}, au rang ${Math.floor(PLAYER.slot / ((track.map.peloton && track.map.peloton.cols) || 3)) + 1} de la grille. Ils passent au travers de toi.`
       : 'Seul contre le chrono, départ dans la cabane.';
-  $('rank').classList.toggle('hidden', !pelotonOn);
+  $('rank').classList.toggle('hidden', !pelotonOn && !netRace);
 }
 /** Départ en ligne ou contre la montre. La manche recommence. */
 function setPeloton(on) {
-  if (!peloton || on === pelotonOn) return;
+  if (!peloton || on === pelotonOn || (on && net)) return;
   pelotonOn = on;
   try { localStorage.setItem(PELOTON_KEY, on ? '1' : '0'); } catch { /* stockage indisponible */ }
   best = loadBest(mode);
@@ -258,24 +278,41 @@ function setPeloton(on) {
   updateModeUI();
 }
 for (const b of document.querySelectorAll('[data-start]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setPeloton(b.dataset.start === 'peloton'); });
-for (const b of document.querySelectorAll('[data-map]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') switchMap(b.dataset.map); });
+for (const b of document.querySelectorAll('[data-map]')) b.addEventListener('click', () => {
+  if (phase !== 'hut' && phase !== 'finished') return;
+  // En ligne : l'hôte change la piste du salon, et tout le monde la charge (voir onRoom).
+  if (net) { if (isHost() && b.dataset.map !== mapId) net.send({ t: 'config', map: b.dataset.map }); return; }
+  switchMap(b.dataset.map);
+});
 for (const b of document.querySelectorAll('[data-mode]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setMode(b.dataset.mode); });
 const nextMode = () => MODE_IDS[(MODE_IDS.indexOf(mode) + 1) % MODE_IDS.length];
-const startHint = () => (pelotonOn
+const startHint = () => (net ? `En ligne, salon ${net.code} : l'hôte lance la course (H pour le salon) · en attendant, pédale pour rouler seul`
+  : pelotonOn
   ? `Départ en ligne : pédale ou appuie sur A, le compte à rebours part pour tout le monde · N : contre la montre`
   : `Pédale ou appuie sur A pour lancer le départ · mode ${MODES[mode].name} (M ou LB pour changer)${peloton ? ' · N : départ en ligne' : ''}`);
 updateModeUI();
 
-function restart() {
+/** Une nouvelle manche ; online : la course en ligne où l'on part (sinon, on quitte celle en cours). */
+function restart(online = null) {
+  // (quitter une course en ligne avant l'arrivée, c'est abandonner)
+  if (netRace && net && netRace !== online && phase !== 'finished') net.send({ t: 'abandon' });
+  if (!!online !== !!netRace) {
+    netRace = online;
+    best = loadBest(mode);
+    ghostOn = !online && !!(best && best.trace);
+  } else netRace = online;
   placeStart();
   rig.reset();
-  phase = auto ? (pelotonOn ? 'countdown' : 'ride') : 'hut';
-  if (phase === 'countdown') { countdown = 3.999; lastBeep = 4; }
+  phase = online ? 'countdown' : auto ? (pelotonOn ? 'countdown' : 'ride') : 'hut';
+  if (phase === 'countdown') { countdown = online ? (online.at - net.now()) / 1000 : 3.999; lastBeep = online ? 99 : 4; }
   lastSplits = 0; finishShownAt = 0; recordThisRun = false;
   message = null;
+  myHist.length = 0;
   $('results').classList.add('hidden');
   $('splitBox').innerHTML = '';
-  if (!auto) showMessage('', startHint(), 9999, true);
+  if (online) help.classList.add('hidden');
+  else if (!auto) showMessage('', startHint(), 9999, true);
+  updateModeUI();
 }
 if (!auto && !params.has('depart')) showMessage('', startHint(), 9999, true);
 
@@ -290,7 +327,7 @@ const ghostState = {
 };
 const qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
 function updateGhost(dt) {
-  const show = ghostOn && !pelotonOn && best && best.trace && best.trace.length > 2 && phase !== 'finished';
+  const show = ghostOn && !pelotonOn && !netRace && best && best.trace && best.trace.length > 2 && phase !== 'finished';
   ghost.group.visible = !!show;
   ghostDot.style.display = show ? '' : 'none';
   if (!show) return;
@@ -376,6 +413,7 @@ function standings(t) {
 }
 let rankTimer = 0;
 function updateRank(t, dt) {
+  if (netRace) return updateOnlineRank(dt);
   if (!pelotonOn) return;
   if ((rankTimer -= dt) > 0 && !film) return;
   rankTimer = 0.15;
@@ -420,7 +458,11 @@ function onFinish() {
   rows.push(['Piste', MAPS[mapId].name]);
   rows.push(['Mode', MODES[mode].name]);
   let classement = '';
-  if (pelotonOn) {
+  if (netRace) {
+    net.send({ t: 'finish', race: netRace.id, time: race.time });
+    classement = `<div id="olResults">${onlineClassement()}</div>`;
+    onlineTitle();
+  } else if (pelotonOn) {
     // Le classement final : on connaît déjà le temps de chaque rival.
     const all = peloton.riders.map((R) => ({ num: R.run.num, name: R.run.rider.name, t: R.run.finish, kit: R.run.rider.kit.jersey }));
     all.push({ num: PLAYER.num, name: 'Toi', t: race.time, kit: '#b3352b', me: true });
@@ -440,18 +482,225 @@ function onFinish() {
   }
   $('resRows').innerHTML = classement + rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
   finishShownAt = performance.now() + 1800;
+  updateOnlineUI();
 }
+
+// ----- Le jeu en ligne : le salon, la course avec départ commun -----
+const remote = createRemoteRiders(world.scene);
+const remoteDots = new Map();
+const SEND_RATE = 15; // poses envoyées par seconde
+let sendTimer = 0, seenRace = null;
+const NAME_KEY = 'downhill.nom', COLOR_KEY = 'downhill.couleur';
+const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } };
+let myName = stored(NAME_KEY) || '';
+let myColor = Number(stored(COLOR_KEY));
+if (!Number.isInteger(myColor) || myColor < 0 || myColor >= KITS.length || stored(COLOR_KEY) === null) { myColor = Math.floor(Math.random() * KITS.length); store(COLOR_KEY, myColor); }
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const playerNo = (id) => (net && net.room ? net.room.players.findIndex((p) => p.id === id) + 1 : 0);
+const chipOf = (p, cls = '') => `<i class="${cls}" style="background:${(KITS[p.color] || KITS[0]).jersey}">${playerNo(p.id)}</i>`;
+/** La course du salon est-elle en cours (un partant encore là n'a ni temps ni abandon) ? */
+function roomRacing(room) {
+  const r = room && room.race;
+  if (!r) return false;
+  const here = new Set(room.players.map((p) => p.id));
+  return r.grid.some((id) => here.has(id) && !(id in room.results));
+}
+
+function goOnline(code) {
+  if (net) return;
+  if (pelotonOn) { pelotonOn = false; restart(); }
+  const q = new URLSearchParams(location.search);
+  q.set('salon', code);
+  history.replaceState(null, '', `${location.pathname}?${q}`);
+  net = joinSalon({ url: serverUrl(params), code, id: playerId(), name: myName || 'Pilote', color: myColor, map: mapId, mode });
+  net.on('room', onRoom).on('pose', (id, at, p, rt) => remote.push(id, at, p, rt)).on('status', updateOnlineUI);
+  updateOnlineUI();
+  updateModeUI();
+  if (phase === 'hut') showMessage('', startHint(), 9999, true);
+}
+function leaveOnline() {
+  if (!net) return;
+  if (netRace && phase !== 'finished') net.send({ t: 'abandon' });
+  net.close();
+  net = null;
+  remote.sync([], null);
+  for (const d of remoteDots.values()) d.remove();
+  remoteDots.clear();
+  const q = new URLSearchParams(location.search);
+  q.delete('salon');
+  history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}`);
+  restart();
+  updateOnlineUI();
+}
+
+/** Le salon a changé : les joueurs, la piste, le mode, le départ, les temps. */
+function onRoom(room) {
+  remote.sync(room.players, net.you);
+  // Les traits des autres sur la barre de progression.
+  for (const [id, d] of remoteDots) if (!room.players.some((p) => p.id === id)) { d.remove(); remoteDots.delete(id); }
+  for (const p of room.players) {
+    if (p.id === net.you) continue;
+    if (!remoteDots.has(p.id)) { const d = document.createElement('u'); $('progBar').appendChild(d); remoteDots.set(p.id, d); }
+    remoteDots.get(p.id).style.background = (KITS[p.color] || KITS[0]).jersey;
+  }
+  // La piste de l'hôte (la page se recharge, et revient dans le salon).
+  if (room.map !== mapId && MAP_IDS.includes(room.map) && !(netRace && phase !== 'finished')) { switchMap(room.map); return; }
+  if (room.mode !== mode && MODE_IDS.includes(room.mode) && !netRace) setMode(room.mode, true);
+  // Un nouveau départ.
+  const r = room.race;
+  if (r && r.id !== seenRace) {
+    const first = seenRace === null;
+    seenRace = r.id;
+    const slot = r.grid.indexOf(net.you);
+    if (slot >= 0 && r.map === mapId && r.at > net.now() - 500) {
+      remote.resetRace();
+      restart({ id: r.id, at: r.at, slot, n: r.grid.length });
+    } else if (slot >= 0 && !(net.you in room.results) && first) net.send({ t: 'abandon' }); // (revenu après le départ)
+  }
+  if (netRace && phase === 'finished' && $('olResults')) { $('olResults').innerHTML = onlineClassement(); onlineTitle(); }
+  updateOnlineUI();
+  updateModeUI();
+}
+
+/** Les partants de la course en ligne, du premier au dernier : les arrivés à leur temps, puis selon la distance. */
+function onlineStandings() {
+  const room = net.room, race = sim.race;
+  const rows = [];
+  for (const id of room.race.grid) {
+    const p = room.players.find((x) => x.id === id);
+    const me = id === net.you;
+    const res = room.results[id];
+    const finish = me && race.state === 'arrivee' ? race.time : typeof res === 'number' ? res : null;
+    rows.push({ id, me, p: p || { id, name: 'Parti', color: 7 }, gone: !p, out: res === null, finish, s: me ? race.s : remote.sOf(id) ?? 0 });
+  }
+  rows.sort((a, b) => (a.out !== b.out ? a.out - b.out : a.finish != null || b.finish != null ? (a.finish ?? Infinity) - (b.finish ?? Infinity) : b.s - a.s));
+  return rows;
+}
+function onlineClassement() {
+  if (!net || !net.room || !net.room.race) return '';
+  const rows = onlineStandings(), lead = rows[0] && rows[0].finish;
+  let html = '<div class="classement">';
+  rows.forEach((r, k) => {
+    const right = r.finish != null ? fmt(r.finish) : r.out ? 'abandon' : r.gone ? 'parti' : 'en course…';
+    const gap = r.finish != null && k && lead != null ? `+${(r.finish - lead).toFixed(2)}` : '';
+    html += `<div class="crow${r.me ? ' me' : ''}"><span class="p tab">${r.finish != null ? k + 1 : ''}</span>${chipOf(r.p)}<span class="nm">${r.me ? 'Toi' : esc(r.p.name)}</span><b class="tab">${right}</b><span class="d tab">${gap}</span></div>`;
+  });
+  return html + '</div>';
+}
+function updateOnlineRank(dt) {
+  if ((rankTimer -= dt) > 0) return;
+  rankTimer = 0.15;
+  if (!net || !net.room || !net.room.race) return;
+  const race = sim.race, rows = onlineStandings(), i = rows.findIndex((r) => r.me);
+  let html = `<div class="pos"><span>PLACE</span><b class="tab">${i + 1}</b><span>/ ${rows.length}</span></div>`;
+  if (race.state === 'course' && race.time > 0) {
+    // Celui de devant : depuis quand il est passé ici. Celui de derrière : combien de temps après moi il est passé là où il est.
+    const ahead = rows[i - 1], behind = rows[i + 1];
+    if (ahead && !ahead.out) {
+      const at = remote.timeAt(ahead.id, race.s);
+      if (Number.isFinite(at)) html += `<div class="gap">${chipOf(ahead.p, 'ol')}<span>${esc(ahead.p.name)}</span><b class="tab behindT">${fmtGap(race.time - at)}</b></div>`;
+    }
+    if (behind && !behind.out && behind.finish == null && behind.s > track.sStart) {
+      const mine = myTimeAt(behind.s), theirs = remote.timeAt(behind.id, behind.s);
+      if (Number.isFinite(mine) && Number.isFinite(theirs)) html += `<div class="gap">${chipOf(behind.p, 'ol')}<span>${esc(behind.p.name)}</span><b class="tab aheadT">${fmtGap(-(theirs - mine))}</b></div>`;
+    }
+  }
+  $('rank').innerHTML = html;
+}
+/** Mon temps de course quand j'étais à la distance s (Infinity si je n'y suis pas encore passé). */
+function myTimeAt(s) {
+  const h = myHist, n = h.length / 2;
+  if (!n || h[(n - 1) * 2 + 1] < s) return Infinity;
+  let lo = 0, hi = n - 1;
+  if (h[1] >= s) return h[0];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (h[m * 2 + 1] < s) lo = m; else hi = m; }
+  const a = h[lo * 2 + 1], b = h[hi * 2 + 1];
+  return h[lo * 2] + (b > a ? (s - a) / (b - a) : 0) * (h[hi * 2] - h[lo * 2]);
+}
+
+/** Le titre de l'écran d'arrivée : ma place (provisoire tant que d'autres roulent). */
+function onlineTitle() {
+  const rows = onlineStandings(), i = rows.findIndex((r) => r.me);
+  $('resTitle').textContent = `${recordThisRun ? 'NOUVEAU RECORD · ' : ''}PLACE ${i + 1} SUR ${rows.length}`;
+}
+
+/** Le salon sur l'écran d'accueil, et le bouton de relance sur l'écran d'arrivée. */
+function updateOnlineUI() {
+  $('olOff').classList.toggle('hidden', !!net);
+  $('olOn').classList.toggle('hidden', !net);
+  $('resOnline').classList.toggle('hidden', !net);
+  $('resGo').textContent = net ? 'Entrée ou Start : rouler seul en attendant · H : le salon' : 'Entrée ou Start : nouvelle manche · F : affronter ton fantôme';
+  if (!net) return;
+  const room = net.room, host = isHost(), racingNow = roomRacing(room);
+  $('olCodeShow').textContent = net.code;
+  $('olStatus').textContent = { connexion: 'connexion…', ok: `connecté${net.rtt != null ? ` · ${Math.round(net.rtt)} ms` : ''}`, 'coupé': 'connexion perdue, on réessaie…', plein: 'salon plein (8 joueurs au plus)' }[net.status] || '';
+  if (!room) { $('olPlayers').innerHTML = ''; return; }
+  $('olPlayers').innerHTML = room.players.map((p) => {
+    const res = room.race && room.race.grid.includes(p.id) ? room.results[p.id] : undefined;
+    const st = !room.race || !room.race.grid.includes(p.id) ? '' : res === null ? 'abandon' : typeof res === 'number' ? fmt(res) : racingNow ? 'en course' : '';
+    return `<div class="pl">${chipOf(p)}<span>${esc(p.name)}${p.id === net.you ? ' (toi)' : ''}</span><em>${p.id === room.host ? 'HÔTE' : ''}${st ? ` · ${st}` : ''}</em></div>`;
+  }).join('');
+  const ready = net.status === 'ok' && !racingNow;
+  for (const id of ['olStart', 'olAgain']) {
+    $(id).classList.toggle('hidden', !host);
+    $(id).disabled = !ready;
+  }
+  $('olStart').textContent = racingNow ? 'Course en cours…' : room.race ? 'Nouvelle course' : 'Lancer la course';
+  const hostName = (room.players.find((p) => p.id === room.host) || {}).name || '';
+  const wait = racingNow ? 'Course en cours : tu partiras à la prochaine.' : `${esc(hostName)} choisit la piste et lance la course.`;
+  $('olInfo').innerHTML = host ? (room.players.length < 2 ? 'Envoie le lien à tes potes. Tu peux aussi lancer seul.' : 'Tu choisis la piste et le mode, puis tu lances.') : wait;
+  $('olAgainInfo').innerHTML = host ? (racingNow ? 'Attends que tout le monde soit arrivé.' : '') : wait;
+}
+
+// Le formulaire du salon.
+$('olName').value = myName;
+$('olName').addEventListener('change', () => {
+  myName = $('olName').value.trim().slice(0, 20);
+  store(NAME_KEY, myName);
+  if (net) net.setProfile(myName || 'Pilote', myColor);
+});
+for (const [i, k] of KITS.entries()) {
+  const b = document.createElement('b');
+  b.style.background = k.jersey;
+  b.title = k.label;
+  b.addEventListener('click', () => {
+    myColor = i;
+    store(COLOR_KEY, i);
+    for (const x of $('olColors').children) x.classList.toggle('on', x === b);
+    if (net) net.setProfile(myName || 'Pilote', myColor);
+  });
+  b.classList.toggle('on', i === myColor);
+  $('olColors').appendChild(b);
+}
+$('olCreate').addEventListener('click', () => goOnline(newCode()));
+$('olJoin').addEventListener('click', () => {
+  const c = $('olCode').value.trim().toUpperCase();
+  if (validCode(c)) goOnline(c); else $('olCode').focus();
+});
+$('olCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('olJoin').click(); });
+$('olLeave').addEventListener('click', leaveOnline);
+$('olCopy').addEventListener('click', async () => {
+  const link = `${location.origin}${location.pathname}?salon=${net.code}&carte=${mapId}`; // (la piste : pas de rechargement en arrivant)
+  try { await navigator.clipboard.writeText(link); $('olCopy').textContent = 'Lien copié !'; } catch { prompt('Le lien du salon :', link); }
+  setTimeout(() => { $('olCopy').textContent = 'Copier le lien'; }, 1600);
+});
+for (const id of ['olStart', 'olAgain']) $(id).addEventListener('click', () => { if (isHost()) net.send({ t: 'start' }); });
+updateOnlineUI();
+if (salonCode) goOnline(salonCode);
 
 // ----- Résolution adaptative : si les images ralentissent, on baisse un peu la résolution -----
 let frameAvg = 1 / 60, adaptTimer = 0;
 function adaptResolution(dt) {
   if (params.has('shot') || dt <= 0) return;
-  frameAvg += (dt - frameAvg) * 0.05;
+  frameAvg += (dt - frameAvg) * 0.1;
   adaptTimer += dt;
-  if (adaptTimer < 2) return;
+  // (chaque seconde ; franchement si l'image rame, doucement pour remonter)
+  if (adaptTimer < 1) return;
   adaptTimer = 0;
   let next = pixelRatio;
-  if (frameAvg > 1 / 45) next = Math.max(0.6, pixelRatio - 0.15);
+  if (frameAvg > 1 / 32) next = Math.max(0.6, pixelRatio - 0.25);
+  else if (frameAvg > 1 / 45) next = Math.max(0.6, pixelRatio - 0.15);
   else if (frameAvg < 1 / 75) next = Math.min(maxRatio, pixelRatio + 0.1);
   if (Math.abs(next - pixelRatio) > 0.01) {
     pixelRatio = next;
@@ -497,13 +746,17 @@ function frame(now) {
     phase = 'countdown'; countdown = 3.999; lastBeep = 4; help.classList.add('hidden'); message = null;
   }
   if (phase === 'countdown') {
-    countdown -= dt;
+    countdown = netRace ? (netRace.at - net.now()) / 1000 : countdown - dt;
     const n = Math.ceil(countdown);
-    if (n < lastBeep && n >= 0) { lastBeep = n; sound.beep(n === 0); if (n > 0) showMessage(String(n), '', 0.9); }
+    if (n < lastBeep && n >= 0) {
+      lastBeep = n;
+      if (n <= 3) { sound.beep(n === 0); if (n > 0) showMessage(String(n), '', 0.9); }
+      else showMessage('', `Départ dans ${n} s`, 1.1, true);
+    }
     if (countdown <= 0) {
       phase = 'ride';
       showMessage('GO', '', 0.8);
-      if (pelotonOn) { sim.race.startMass(); goTime = sim.time; }
+      if (pelotonOn || netRace) { sim.race.startMass(); goTime = sim.time; }
     }
   }
 
@@ -563,6 +816,22 @@ function frame(now) {
     camera.lookAt(tv.look.x, tv.look.y + 1, tv.look.z);
     camera.fov = tv.fov || 40;
     camera.updateProjectionMatrix();
+  }
+  if (net) {
+    sendTimer -= dt;
+    // (pas depuis la cabane : tout le monde y est au même endroit ; on se voit sur la grille et en course)
+    if (sendTimer <= 0 && net.status === 'ok' && phase !== 'hut') {
+      sendTimer += 1 / SEND_RATE;
+      if (sendTimer < 0) sendTimer = 0;
+      net.send({ t: 'pose', at: Math.round(net.now()), rt: netRace && race.state === 'course' ? Math.round(race.time * 1000) / 1000 : null, p: poseOf(sim).map((v) => Math.round(v * 1e4) / 1e4) });
+    }
+    remote.update(net.now() - DELAY, dt, camera);
+    if (netRace && race.state === 'course' && (!myHist.length || race.time - myHist[myHist.length - 2] > 0.1)) myHist.push(race.time, race.s);
+    for (const [id, d] of remoteDots) {
+      const sR = remote.sOf(id);
+      d.style.display = sR == null ? 'none' : '';
+      if (sR != null) d.style.left = `${Math.max(0, Math.min(1, (sR - track.sStart) / span)) * 100}%`;
+    }
   }
   updateRank(pelT, dt);
   world.update(st.position, camera, clock);
@@ -624,5 +893,28 @@ window.__game = {
   /** Affiche le peloton même avec ?depart (captures). */
   showPeloton() { if (peloton) { pelotonOn = true; updateModeUI(); } },
   start() { if (phase === 'hut') { phase = 'countdown'; countdown = 3.999; lastBeep = 4; help.classList.add('hidden'); message = null; } },
-  state: () => ({ map: mapId, mode, tricks: sim.tricks.landed.slice(), time: sim.race.time, raceState: sim.race.state, s: sim.race.s, speed: sim.bike.state().speed, crashes: sim.race.crashes, crashed: !!sim.bike.crashed }),
+  /** Mesure : ce que dessine une image (toutes passes : ombres, lointain, scène) et le temps de mise à jour du décor. */
+  perf() {
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    filmDt = 1 / 60; frame(performance.now());
+    const { calls, triangles } = renderer.info.render;
+    renderer.info.autoReset = true;
+    const t0 = performance.now();
+    for (let i = 0; i < 20; i++) world.update(sim.bike.state().position, camera, i / 60);
+    // Par objet (sans tenir compte du champ de vision) : les triangles de ce qui est affiché.
+    const parts = {};
+    for (const sc of [world.scene, world.farScene]) sc.traverseVisible((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      const g = o.geometry, tris = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1);
+      let p = o, name = '';
+      while (p && !name) { name = p.name; p = p.parent; }
+      const key = (name || '?') + (o.castShadow ? ' (ombre)' : '');
+      parts[key] = (parts[key] || 0) + tris;
+    });
+    const top = Object.entries(parts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => `${k} ${(v / 1e6).toFixed(2)}`);
+    return { calls, triangles, decorMs: (performance.now() - t0) / 20, arbres: world.forest.stats, top };
+  },
+  net: () => net, remote,
+  state: () => ({ phase, online: net ? { status: net.status, room: net.room, you: net.you, netRace } : null, map: mapId, mode, tricks: sim.tricks.landed.slice(), time: sim.race.time, raceState: sim.race.state, s: sim.race.s, speed: sim.bike.state().speed, crashes: sim.race.crashes, crashed: !!sim.bike.crashed }),
 };

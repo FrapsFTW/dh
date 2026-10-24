@@ -218,14 +218,19 @@ class Tiles {
     this.meshes = [];
     for (const t of this.map.values()) {
       const kind = kinds[t.name];
-      const mesh = new THREE.InstancedMesh(kind.geometry, kind.material, t.matrices.length);
-      t.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
-      if (t.colors.length) t.colors.forEach((c, i) => mesh.setColorAt(i, c));
-      mesh.castShadow = !!kind.castShadow;
-      mesh.receiveShadow = !!kind.receiveShadow;
-      mesh.computeBoundingSphere();
-      group.add(mesh);
-      this.meshes.push({ mesh, cx: t.cx, cz: t.cz, range: kind.range ?? (kind.near ? 220 : 0) });
+      // (une version plus simple au loin, si la sorte en a une : kind.far, à partir de kind.lod mètres)
+      const make = (geometry) => {
+        const mesh = new THREE.InstancedMesh(geometry, kind.material, t.matrices.length);
+        t.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+        if (t.colors.length) t.colors.forEach((c, i) => mesh.setColorAt(i, c));
+        mesh.castShadow = !!kind.castShadow;
+        mesh.receiveShadow = !!kind.receiveShadow;
+        mesh.computeBoundingSphere();
+        mesh.name = t.name;
+        group.add(mesh);
+        return mesh;
+      };
+      this.meshes.push({ mesh: make(kind.geometry), far: kind.far ? make(kind.far) : null, lod: kind.lod ?? Infinity, cx: t.cx, cz: t.cz, range: kind.range ?? (kind.near ? 220 : 0) });
     }
   }
 }
@@ -303,7 +308,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
   // ----- Les rochers et les troncs couchés -----
   const rockMat = rockMaterial(groundTextures, { moss: treeline === null ? 0.55 : 0.35, alpine: treeline !== null });
   const ROCKS = ['rockA', 'rockB', 'rockC', 'rockD'];
-  ROCKS.forEach((name, i) => { kinds[name] = { geometry: rockGeometry(i + 1, { detail: 2, cuts: 5 + i }), material: rockMat, castShadow: true, receiveShadow: true, range: 900 }; });
+  ROCKS.forEach((name, i) => { kinds[name] = { geometry: rockGeometry(i + 1, { detail: 2, cuts: 5 + i }), far: rockGeometry(i + 1, { detail: 1, cuts: 5 + i }), lod: 120, material: rockMat, castShadow: true, receiveShadow: true, range: 900 }; });
   const rockCount = Math.round(1400 * more * (treeline === null ? 1 : 1.8));
   for (let k = 0; k < rockCount; k++) {
     let x, z;
@@ -347,7 +352,12 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
       for (const m of winds) m.userData.time.value = t;
       if (!camera) return;
       const cx = camera.position.x, cz = camera.position.z;
-      for (const e of tiles.meshes) if (e.range) e.mesh.visible = Math.hypot(e.cx - cx, e.cz - cz) < e.range + TILE * 0.71;
+      for (const e of tiles.meshes) {
+        const d = Math.hypot(e.cx - cx, e.cz - cz);
+        const shown = !e.range || d < e.range + TILE * 0.71;
+        e.mesh.visible = shown && d < e.lod + TILE * 0.71;
+        if (e.far) e.far.visible = shown && d >= e.lod + TILE * 0.71;
+      }
     },
   };
 }

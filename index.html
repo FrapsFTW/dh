@@ -62,6 +62,26 @@
     .classement .dots { text-align: center; color: var(--muted); line-height: 1; }
     #startBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
     .modes button:disabled { opacity: .4; cursor: default; }
+    /* Le jeu en ligne : le salon, sur l'écran d'accueil. */
+    #online { margin: 2px 0 16px; padding: 12px 14px; background: rgba(255,255,255,.05); border-left: 3px solid #1d5fb8; }
+    #online .olHead { font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+    #online .olRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    #online input { font: inherit; font-size: 15px; font-weight: 700; color: var(--fg); background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.18); padding: 6px 10px; width: 170px; }
+    #online input#olCode { width: 90px; text-transform: uppercase; letter-spacing: .12em; }
+    #online button, #results button { font: inherit; font-weight: 800; font-size: 14px; color: var(--fg); background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); padding: 6px 12px; cursor: pointer; }
+    #online button.main, #results button.main { background: #1d5fb8; border-color: #1d5fb8; }
+    #online button:disabled, #results button:disabled { opacity: .45; cursor: default; }
+    #olCodeShow { font-size: 22px; font-weight: 900; letter-spacing: .14em; }
+    #olStatus { font-size: 13px; color: var(--muted); }
+    #olColors { display: flex; gap: 5px; }
+    #olColors b { width: 22px; height: 22px; cursor: pointer; border: 2px solid rgba(255,255,255,.2); box-sizing: border-box; }
+    #olColors b.on { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
+    #olPlayers { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 10px; }
+    #olPlayers .pl { display: flex; align-items: center; gap: 10px; font-size: 15px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+    #olPlayers .pl i, #rank i.ol { font-style: normal; font-size: 12px; font-weight: 900; min-width: 22px; text-align: center; padding: 3px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+    #olPlayers .pl span { flex: 1; }
+    #olPlayers .pl em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 700; }
+    #olInfo { font-size: 13px; color: rgba(255,255,255,.75); }
     #progress .lbl { display: flex; justify-content: space-between; font-size: 12px; margin-top: 6px; color: var(--muted); text-shadow: 0 1px 2px rgba(0,0,0,.6); font-weight: 600; }
 
     /* La vitesse, en bas à droite. */
@@ -134,6 +154,16 @@
       <div id="modeBlurb"></div>
       <div class="modes"><button data-start="seul">Contre la montre</button><button data-start="peloton">Départ en ligne</button></div>
       <div id="startBlurb"></div>
+      <div id="online">
+        <div class="olHead">EN LIGNE AVEC TES POTES</div>
+        <div class="olRow"><input id="olName" maxlength="20" placeholder="Ton nom" autocomplete="nickname" /><span id="olColors"></span></div>
+        <div id="olOff" class="olRow"><button id="olCreate" class="main">Créer un salon</button><span id="olInfo0" style="font-size:13px;color:var(--muted)">ou</span><input id="olCode" maxlength="8" placeholder="CODE" /><button id="olJoin">Rejoindre</button></div>
+        <div id="olOn" class="hidden">
+          <div class="olRow"><span style="font-size:13px;color:var(--muted)">Salon</span><b id="olCodeShow"></b><button id="olCopy">Copier le lien</button><button id="olLeave">Quitter</button><span id="olStatus"></span></div>
+          <div id="olPlayers"></div>
+          <div class="olRow"><button id="olStart" class="main">Lancer la course</button><span id="olInfo"></span></div>
+        </div>
+      </div>
       <table>
         <tr><th></th><th>Manette (recommandée)</th><th>Clavier</th></tr>
         <tr><td>Tourner</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd></td></tr>
@@ -161,7 +191,8 @@
       <div class="final" id="resTime">0:00.00</div>
       <div id="resDelta" style="font-weight:800;font-size:18px"></div>
       <div id="resRows" style="margin-top:14px"></div>
-      <div class="go">Entrée ou Start : nouvelle manche · F : affronter ton fantôme</div>
+      <div class="go" id="resGo">Entrée ou Start : nouvelle manche · F : affronter ton fantôme</div>
+      <div class="olRow hidden" id="resOnline" style="margin-top:12px;display:flex;gap:10px;align-items:center"><button id="olAgain" class="main">Nouvelle course</button><span id="olAgainInfo" style="font-size:13px;color:rgba(255,255,255,.75)"></span></div>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>

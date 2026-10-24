@@ -8,3 +8,6 @@ shots/
 
 # Les originaux des textures téléchargées (npm run textures les refait)
 tools/.cache/
+
+# Le serveur des salons en local (npx wrangler dev)
+.wrangler/

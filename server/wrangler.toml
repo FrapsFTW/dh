@@ -1,0 +1,13 @@
+# Le serveur des salons (jeu en ligne), sur Cloudflare Workers. Voir le README, « Jouer en ligne ».
+name = "dh-salons"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "SALON"
+class_name = "Salon"
+
+# (les Durable Objects de l'offre gratuite gardent leur stockage dans SQLite)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Salon"]

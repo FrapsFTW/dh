@@ -69,6 +69,18 @@ export function riderSlot(index) {
  * pierriers (là où tout le monde passe au même endroit). Sur un tronçon large (le glacier), il garde à peu près sa
  * place de la grille (gridU), et rejoint les autres quand le couloir se resserre.
  */
+/**
+ * L'engagement d'un rival (voir autopilot.js) : plus il attaque, plus il roule vite en ligne droite, freine tard,
+ * enroule les virages et passe les bosses lancé. Il pédale jusqu'à 47 km/h, arrive au saut à sa vitesse 15 m avant
+ * (pas 40), braque plus franchement et regarde plus loin devant lui (sans quoi, à 50 km/h, il zigzague). Dans les
+ * cailloux, il reste presque aussi prudent que le pilote auto (c'est là qu'on tombe). Du plus lent au plus rapide,
+ * de 1,11 à 1,4.
+ */
+export const attack = (pace) => ({
+  boost: 1 + (pace - 0.85) * 1.6, turnBoost: 1, rootBoost: 0.8, brakeBoost: 2.5, rollerBoost: 1.6,
+  pedalTo: 13, jumpLead: 15, steerMax: 0.95, gripMax: 0.55, look: 0.75,
+});
+
 export function lineFor(track, rider, seed, gridU = 0) {
   const r = rng(seed);
   const w1 = 35 + r() * 40, w2 = 90 + r() * 60, p1 = r() * 6.28, p2 = r() * 6.28;
@@ -83,7 +95,9 @@ export function lineFor(track, rider, seed, gridU = 0) {
     if (track.onBridge && track.onBridge(s)) k = 0;
     u *= k;
     u = Math.max(-1.5, Math.min(1.5, u));
-    const tape = track.tapeAt(s);
+    // (la largeur qui vient, pas seulement celle d'ici : on se replace avant un goulet, pas dedans)
+    let tape = track.tapeAt(s);
+    for (let d = 6; d <= 30; d += 6) tape = Math.min(tape, track.tapeAt(s + d));
     if (tape > 4) {
       const w = Math.min(1, (tape - 3.4) / 12);
       u = u * (1 - w) + w * (gridU * 0.9 + 2.5 * Math.sin(s / w1 + p1));
@@ -119,6 +133,15 @@ export const POSE = Object.fromEntries(FIELDS.map(([k], i) => [k, i]));
 export const FLAG = { contacts: 3, pedal: 4, brake: 8, finished: 16 };
 export { RATE as PELOTON_RATE, NF as POSE_SIZE };
 
+/** La pose du vélo et de son pilote en ce moment, au format d'un échantillon (FIELDS). Sert aussi au jeu en ligne. */
+export function poseOf(sim) {
+  const b = sim.bike, t = b.body.translation(), r = b.body.rotation(), [wf, wr] = b.wheels, inp = b.input || {};
+  const flags = Math.min(2, b.contacts) | (inp.pedal > 0 ? FLAG.pedal : 0)
+    | ((inp.brakeFront || 0) + (inp.brakeRear || 0) > 0.15 ? FLAG.brake : 0) | (sim.race.state === 'arrivee' ? FLAG.finished : 0);
+  return [t.x, t.y, t.z, sim.race.s, r.x, r.y, r.z, r.w, b.steer, wf.x, wr.x, b.lean || 0, b.crouch || 0,
+    b.hips.x, b.hips.y, b.hips.z, wf.omega, wr.omega, flags];
+}
+
 /** Place un vélo sur sa place de grille et laisse les suspensions se poser, freins serrés. */
 export function placeOnGrid(sim, slot) {
   sim.reset();
@@ -140,13 +163,7 @@ export function recordRider(sim, rider, slot, { pace = rider.pace, seed = rider.
   sim._autopilot = null;
   const line = lineFor(sim.track, rider, seed, slot.u);
   const pose = [];
-  const push = () => {
-    const b = sim.bike, t = b.body.translation(), r = b.body.rotation(), [wf, wr] = b.wheels, inp = b.input || {};
-    const flags = Math.min(2, b.contacts) | (inp.pedal > 0 ? FLAG.pedal : 0)
-      | ((inp.brakeFront || 0) + (inp.brakeRear || 0) > 0.15 ? FLAG.brake : 0) | (sim.race.state === 'arrivee' ? FLAG.finished : 0);
-    pose.push([t.x, t.y, t.z, sim.race.s, r.x, r.y, r.z, r.w, b.steer, wf.x, wr.x, b.lean || 0, b.crouch || 0,
-      b.hips.x, b.hips.y, b.hips.z, wf.omega, wr.omega, flags]);
-  };
+  const push = () => pose.push(poseOf(sim));
   sim.race.startMass();
   push();
   // Après la ligne, chacun va s'arrêter à sa place dans l'aire d'arrivée (pas tous au même endroit).
@@ -163,7 +180,7 @@ export function recordRider(sim, rider, slot, { pace = rider.pace, seed = rider.
       else if (sim.race.s >= stopS) Object.assign(inp, { brakeFront: 0.45, brakeRear: 0.8, weight: -0.6 });
       else { inp.brakeFront = Math.min(0.5, Math.max(0, (v - vWant) * 0.3)); inp.brakeRear = Math.min(0.8, Math.max(0, (v - vWant) * 0.5)); }
     } else if (t < rider.react) inp = HOLD;
-    else inp = autopilot(sim, { pace, line });
+    else inp = autopilot(sim, { pace, line, ...attack(pace) });
     sim.step(inp);
     if (sim.bike.crashed || sim.race.out || sim.race.missed) return null;
     // Un rival ne touche jamais la rubalise (le joueur, lui, a un demi-mètre de tolérance) : sinon, on refait sa descente.
