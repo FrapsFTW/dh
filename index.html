@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Downhill</title>
+  <link rel="icon" href="data:," />
+  <style>:root{--fg:#fff;--panel:#0a0d12c7;--panel2:#0a0d12e6;--accent:#e8402a;--ahead:#3ddc6a;--behind:#ff5a47;--muted:#ffffff9e}html,body{height:100%;color:var(--fg);background:#bccfdc;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}canvas{display:block}.hidden{display:none!important}#hud{pointer-events:none;position:fixed;inset:0}.tab{font-variant-numeric:tabular-nums}#timer{align-items:stretch;display:flex;position:absolute;top:18px;left:18px;box-shadow:0 6px 24px #00000040}#timer .tag{background:var(--accent);letter-spacing:.08em;align-items:center;padding:0 10px;font-size:14px;font-weight:900;display:flex}#timer .time{background:var(--panel2);text-align:right;min-width:150px;padding:4px 14px;font-size:34px;font-weight:800}#timer .mode{background:var(--panel);letter-spacing:.08em;color:var(--muted);align-items:center;padding:0 9px;font-size:11px;font-weight:800;display:flex}.modes{flex-wrap:wrap;gap:8px;margin:4px 0 6px;display:flex}.modes button{font:inherit;color:var(--fg);cursor:pointer;background:#ffffff14;border:2px solid #ffffff2e;padding:7px 14px;font-size:15px;font-weight:800}.modes button.on{background:var(--accent);border-color:var(--accent)}#modeBlurb,#mapBlurb{color:#ffffffbf;margin-bottom:12px;font-size:13px}[data-map].on{background:#1d5fb8!important;border-color:#1d5fb8!important}#splitBox{flex-direction:column;gap:4px;display:flex;position:absolute;top:70px;left:18px}.split{background:var(--panel);font-size:15px;font-weight:700;display:flex}.split .n{background:#ffffff1f;min-width:64px;padding:4px 8px}.split .t{text-align:right;min-width:70px;padding:4px 10px}.split .d{text-align:right;min-width:64px;padding:4px 10px}.ahead{color:#06210f;background:var(--ahead)!important}.behind{color:#2a0702;background:var(--behind)!important}#best{background:var(--panel);padding:5px 12px;font-size:14px;font-weight:600;position:absolute;top:18px;left:50%;transform:translate(-50%)}#best:empty{display:none}#progress{width:240px;position:absolute;top:22px;right:22px}#progress .bar{background:#ffffff40;height:6px;position:relative}#progress .bar i{background:#fff;position:absolute;top:0;bottom:0;left:0}#progress .bar b{background:#ffffffb3;width:2px;height:14px;position:absolute;top:-4px}#progress .bar s{background:#ffffff59;border:2px solid #ffffffbf;border-radius:50%;width:10px;height:10px;margin-left:-5px;position:absolute;top:-6px}#progress .bar u{opacity:.9;width:3px;height:10px;margin-left:-1px;position:absolute;top:-2px;box-shadow:0 0 0 1px #00000059}#rank{flex-direction:column;gap:3px;width:240px;display:flex;position:absolute;top:64px;right:22px}#rank .pos{background:var(--panel2);justify-content:flex-end;align-items:baseline;gap:8px;padding:4px 12px;display:flex}#rank .pos span{color:var(--muted);letter-spacing:.08em;font-size:12px;font-weight:800}#rank .pos b{font-size:30px;font-weight:900;line-height:1.05}#rank .gap{background:var(--panel);align-items:center;gap:8px;font-size:13px;font-weight:700;display:flex}#rank .gap span{white-space:nowrap;text-overflow:ellipsis;flex:1;overflow:hidden}#rank i,.classement i{text-align:center;color:#fff;text-shadow:0 1px 2px #000000b3;min-width:26px;padding:4px 3px;font-size:12px;font-style:normal;font-weight:900}#rank .gap b{text-align:right;min-width:52px;padding:4px 10px}.behindT{color:var(--behind)}.aheadT{color:var(--ahead)}.classement{margin-bottom:14px}.classement .crow{border-bottom:1px solid #ffffff14;align-items:center;gap:10px;padding:4px 0;font-size:15px;display:flex}.classement .crow.me{background:#e8402a38}.classement .p{text-align:right;width:26px;color:var(--muted);font-weight:800}.classement .nm{flex:1}.classement .d{text-align:right;width:64px;color:var(--muted);font-size:13px}.classement .dots{text-align:center;color:var(--muted);line-height:1}#startBlurb{color:#ffffffbf;margin-bottom:12px;font-size:13px}.modes button:disabled{opacity:.4;cursor:default}#online{background:#ffffff0d;border-left:3px solid #1d5fb8;margin:2px 0 16px;padding:12px 14px}#online .olHead{letter-spacing:.08em;color:var(--muted);margin-bottom:8px;font-size:12px;font-weight:800}#online .olRow{flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;display:flex}#online input{font:inherit;color:var(--fg);background:#00000059;border:2px solid #ffffff2e;width:170px;padding:6px 10px;font-size:15px;font-weight:700}#online input#olCode{text-transform:uppercase;letter-spacing:.12em;width:90px}#online button,#results button{font:inherit;color:var(--fg);cursor:pointer;background:#ffffff14;border:2px solid #ffffff2e;padding:6px 12px;font-size:14px;font-weight:800}#online button.main,#results button.main{background:#1d5fb8;border-color:#1d5fb8}#online button:disabled,#results button:disabled{opacity:.45;cursor:default}#olCodeShow{letter-spacing:.14em;font-size:22px;font-weight:900}#olStatus{color:var(--muted);font-size:13px}#olColors{gap:5px;display:flex}#olColors b{cursor:pointer;box-sizing:border-box;border:2px solid #fff3;width:22px;height:22px}#olColors b.on{border-color:#fff;box-shadow:0 0 0 2px #ffffff59}#olPlayers{flex-direction:column;gap:3px;margin:4px 0 10px;display:flex}#olPlayers .pl{border-bottom:1px solid #ffffff12;align-items:center;gap:10px;padding:3px 0;font-size:15px;display:flex}#olPlayers .pl i,#rank i.ol{text-align:center;color:#fff;text-shadow:0 1px 2px #000c;min-width:22px;padding:3px;font-size:12px;font-style:normal;font-weight:900}#olPlayers .pl span{flex:1}#olPlayers .pl em{color:var(--muted);font-size:12px;font-style:normal;font-weight:700}#olInfo{color:#ffffffbf;font-size:13px}#progress .lbl{color:var(--muted);text-shadow:0 1px 2px #0009;justify-content:space-between;margin-top:6px;font-size:12px;font-weight:600;display:flex}#speed{background:var(--panel);text-align:right;min-width:110px;padding:8px 14px;position:absolute;bottom:20px;right:22px}#speed .v{font-size:40px;font-weight:800;line-height:1}#speed .u{color:var(--muted);letter-spacing:.06em;font-size:12px;font-weight:600}#message{text-align:center;white-space:pre-line;position:absolute;top:33%;left:50%;transform:translate(-50%,-50%)}#message .big{letter-spacing:.02em;text-shadow:0 3px 18px #00000080;font-size:64px;font-weight:900}#message .small{text-shadow:0 2px 8px #0009;margin-top:6px;font-size:18px;font-weight:600}#message .pill{background:var(--panel2);padding:8px 18px;font-size:22px;font-weight:800;display:inline-block}#inputs{background:var(--panel);color:var(--muted);grid-template-columns:auto 110px;align-items:center;gap:5px 10px;padding:9px 11px;font-size:11px;font-weight:600;display:grid;position:absolute;bottom:20px;left:20px}.bar2{background:#ffffff29;height:7px;position:relative;overflow:hidden}.bar2>i{background:#ffd34d;position:absolute;top:0;bottom:0;left:0}.bar2.center>i{background:#7fc8ff;left:50%}.bar2.center:after{content:"";background:#fff9;width:1px;position:absolute;top:-2px;bottom:-2px;left:50%}#surface{grid-column:1/-1}.screen{pointer-events:auto;background:#06090d8c;justify-content:center;align-items:center;display:flex;position:fixed;inset:0}.card{box-sizing:border-box;border-top:4px solid var(--accent);background:#0c1016f2;width:calc(100% - 32px);max-width:820px;max-height:calc(100% - 32px);padding:26px 30px;line-height:1.45;overflow:auto;box-shadow:0 12px 50px #00000073}.card h1{letter-spacing:.01em;margin:0 0 4px;font-size:28px;font-weight:900}.card p{color:#ffffffd1;margin:6px 0 14px}.card table{border-collapse:collapse;width:100%;font-size:14px}.card td,.card th{text-align:left;vertical-align:top;border-bottom:1px solid #ffffff14;padding:5px 8px}.card th{text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-size:11px;font-weight:700}kbd{white-space:nowrap;background:#ffffff21;padding:1px 6px;font-family:inherit;font-size:13px}.go{margin-top:16px;font-size:16px;font-weight:800}.tips{color:#ffffffbf;margin-top:10px;font-size:13px}#pad{color:var(--muted);margin-top:8px;font-size:13px}#results .row{border-bottom:1px solid #ffffff14;justify-content:space-between;padding:6px 0;font-size:16px;display:flex}#results .row b{font-variant-numeric:tabular-nums}#results .final{font-variant-numeric:tabular-nums;margin:4px 0 2px;font-size:52px;font-weight:900}#loading{color:#1d2b38;background:#bccfdc;flex-direction:column;justify-content:center;align-items:center;gap:12px;font-size:18px;font-weight:600;display:flex;position:fixed;inset:0}#loading .b{background:#0000001f;width:260px;height:4px}#loading .b i{background:#1d2b38;width:0;height:100%;transition:width .2s;display:block}@media (max-width:760px){#timer .time{min-width:110px;font-size:26px}#speed .v{font-size:30px}#inputs{display:none}#progress{width:140px}#message .big{font-size:42px}}</style>
+  <script type="module" crossorigin src="./assets/index-C7IP2vjl.js"></script>
+</head>
+<body>
+  <div id="loading"><div id="loadText">Construction de la piste…</div><div class="b"><i id="loadBar"></i></div></div>
+  <div id="hud" class="hidden">
+    <div id="timer"><div class="tag">DH</div><div class="time tab" id="chrono">0:00.00</div><div class="mode" id="modeTag"></div></div>
+    <div id="splitBox"></div>
+    <div id="best" class="tab"></div>
+    <div id="progress"><div class="bar" id="progBar"><i id="progFill"></i></div><div class="lbl"><span id="progLeft">Départ</span><span id="progRight"></span></div></div>
+    <div id="rank" class="hidden"></div>
+    <div id="message"></div>
+    <div id="speed"><div class="v tab" id="speedV">0</div><div class="u" id="speedU">KM/H</div></div>
+    <div id="inputs">
+      <span>Direction</span><div class="bar2 center"><i id="b-steer"></i></div>
+      <span>Frein avant</span><div class="bar2"><i id="b-front"></i></div>
+      <span>Frein arrière</span><div class="bar2"><i id="b-rear"></i></div>
+      <span>Poids</span><div class="bar2 center"><i id="b-weight"></i></div>
+      <span>Saut</span><div class="bar2"><i id="b-hop"></i></div>
+      <span id="surface"></span>
+    </div>
+  </div>
+  <div id="help" class="screen hidden">
+    <div class="card">
+      <h1>Downhill</h1>
+      <p>Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, des temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
+      <div class="modes"><button data-map="foret">La Forêt</button><button data-map="alpes">La Grande Combe</button><button data-map="avalanche">L'Avalanche</button></div>
+      <div id="mapBlurb"></div>
+      <div class="modes"><button data-mode="normal">Normal</button><button data-mode="ultra">Ultra-réaliste</button></div>
+      <div id="modeBlurb"></div>
+      <div class="modes"><button data-start="seul">Contre la montre</button><button data-start="peloton">Départ en ligne</button></div>
+      <div id="startBlurb"></div>
+      <div id="online">
+        <div class="olHead">EN LIGNE AVEC TES POTES</div>
+        <div class="olRow"><input id="olName" maxlength="20" placeholder="Ton nom" autocomplete="nickname" /><span id="olColors"></span></div>
+        <div id="olOff" class="olRow"><button id="olCreate" class="main">Créer un salon</button><span id="olInfo0" style="font-size:13px;color:var(--muted)">ou</span><input id="olCode" maxlength="8" placeholder="CODE" /><button id="olJoin">Rejoindre</button></div>
+        <div id="olOn" class="hidden">
+          <div class="olRow"><span style="font-size:13px;color:var(--muted)">Salon</span><b id="olCodeShow"></b><button id="olCopy">Copier le lien</button><button id="olLeave">Quitter</button><span id="olStatus"></span></div>
+          <div id="olPlayers"></div>
+          <div class="olRow"><button id="olStart" class="main">Lancer la course</button><span id="olInfo"></span></div>
+        </div>
+      </div>
+      <table>
+        <tr><th></th><th>Manette (recommandée)</th><th>Clavier</th></tr>
+        <tr><td>Tourner</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd></td></tr>
+        <tr><td>Poids en avant / en arrière</td><td>stick gauche ↕</td><td><kbd>E</kbd> / <kbd>A</kbd></td></tr>
+        <tr><td>Frein avant · frein arrière</td><td>gâchette droite · gauche</td><td><kbd>S</kbd> ou <kbd>↓</kbd> les deux, <kbd>Maj</kbd> l'arrière seul</td></tr>
+        <tr><td>Se comprimer puis sauter</td><td><kbd>A</kbd> (maintenir, relâcher)</td><td><kbd>Espace</kbd> (maintenir, relâcher)</td></tr>
+        <tr><td>Figure (en l'air)</td><td><kbd>A</kbd> maintenu + stick : ↓ backflip, ↑ frontflip, ↔ 360</td><td><kbd>Espace</kbd> maintenu + <kbd>A</kbd> backflip, <kbd>E</kbd> frontflip, <kbd>Q</kbd> <kbd>D</kbd> 360</td></tr>
+        <tr><td>Pédaler</td><td><kbd>X</kbd> ou <kbd>RB</kbd></td><td><kbd>Z</kbd> ou <kbd>↑</kbd></td></tr>
+        <tr><td>Regarder autour</td><td>stick droit</td><td></td></tr>
+        <tr><td>Repartir du dernier point</td><td><kbd>Y</kbd> ou <kbd>B</kbd></td><td><kbd>R</kbd></td></tr>
+        <tr><td>Recommencer la manche</td><td><kbd>Start</kbd></td><td><kbd>Entrée</kbd></td></tr>
+        <tr><td>Vue extérieure · fantôme du record</td><td><kbd>Select</kbd></td><td><kbd>C</kbd> · <kbd>F</kbd></td></tr>
+        <tr><td>Changer de mode (avant le départ)</td><td><kbd>LB</kbd></td><td><kbd>M</kbd></td></tr>
+        <tr><td>Départ en ligne ou contre la montre</td><td></td><td><kbd>N</kbd></td></tr>
+        <tr><td>Réglages · pilote automatique · aide</td><td></td><td><kbd>G</kbd> · <kbd>P</kbd> · <kbd>H</kbd></td></tr>
+      </table>
+      <div class="tips">Conseils de pilote : freine avant le virage, pas dedans. Recule ton poids dans les pentes raides et quand tu freines fort. Les virages relevés se prennent bien plus vite que les plats. Comprime-toi avant une bosse et relâche au sommet pour sauter plus loin. Ne freine pas en l'air : la roue se bloque et tu atterris en glissant.<br>Figures : le saut d'arrivée est taillé pour (plus d'une seconde en l'air). Groupé, tu tournes plus vite ; lâche le bouton pour t'ouvrir et ralentir la rotation avant de te poser. En Normal, le pilote finit la rotation si tu as lâché au bon moment ; en Ultra-réaliste, c'est à toi de l'arrêter (stick dans l'autre sens, toujours groupé) et de te poser droit.</div>
+      <div class="go">Pédale ou appuie sur A pour lancer le compte à rebours.</div>
+      <div id="pad"></div>
+    </div>
+  </div>
+  <div id="results" class="screen hidden">
+    <div class="card">
+      <div id="resTitle" style="font-weight:800;color:var(--muted);letter-spacing:.08em;font-size:13px">ARRIVÉE</div>
+      <div class="final" id="resTime">0:00.00</div>
+      <div id="resDelta" style="font-weight:800;font-size:18px"></div>
+      <div id="resRows" style="margin-top:14px"></div>
+      <div class="go" id="resGo">Entrée ou Start : nouvelle manche · F : affronter ton fantôme</div>
+      <div class="olRow hidden" id="resOnline" style="margin-top:12px;display:flex;gap:10px;align-items:center"><button id="olAgain" class="main">Nouvelle course</button><span id="olAgainInfo" style="font-size:13px;color:rgba(255,255,255,.75)"></span></div>
+    </div>
+  </div>
+</body>
+</html>
