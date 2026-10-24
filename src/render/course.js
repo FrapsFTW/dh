@@ -1,11 +1,12 @@
-// L'habillage de la course : rubalise, cabane de départ, arches de chrono, radar, aire d'arrivée et public,
-// protections sur les arbres, panneaux de virage, la route du road gap, et les cailloux et racines de la piste
-// (posés exactement là où la physique les a mis).
+// L'habillage de la course : rubalise (ou piquets sur un glacier), cabane de départ, arches de chrono, radar, aire
+// d'arrivée et public, protections sur les arbres, panneaux de virage, les routes, et les cailloux et racines de la
+// piste (posés exactement là où la physique les a mis). Sur L'Avalanche : séracs, gué, maisons du village, fontaine.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng, fbm } from '../sim/noise.js';
 import { TAPE_U, TRAIL_HALF } from '../sim/track.js';
+import { rockGeometry, rockMaterial, iceMaterial } from './rocks.js';
 import { NOISE_GLSL } from './glsl.js';
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
@@ -44,30 +45,88 @@ function frameAt(track, s, u = 0) {
   };
 }
 
-function personGeometry() {
-  // Une silhouette simple, 1,75 m : jambes, buste, bras, tête. Les couleurs viennent des sommets (peau, pantalon),
-  // le buste prend la couleur de l'instance (le t-shirt).
+// Un spectateur, 1,75 m environ, en quatre postures (bras le long du corps, mains sur les hanches, un bras levé qui
+// encourage, le téléphone tendu pour filmer). Des volumes tournés (bassin, buste, épaules, cuisses, mollets), des mains,
+// des chaussures, des cheveux ou une casquette. Les couleurs viennent des sommets ; l'attribut « veste » dit ce qui
+// prend la couleur de chacun (la veste), le reste garde la sienne (peau, pantalon, cheveux).
+const SKINS = ['#e0b394', '#c99671', '#8d5a3b', '#f0c9aa'].map(lin);
+const PANTS = ['#2a3446', '#1d1f24', '#5d5444', '#3c4f6b'].map(lin);
+const HAIR = ['#2a1d14', '#5a3a1e', '#b48a52', '#1a1a1a'].map(lin);
+function personGeometry(pose, look) {
   const parts = [];
-  const paint = (g, c) => {
-    const col = new THREE.Color(c);
-    const arr = new Float32Array(g.attributes.position.count * 3);
-    for (let i = 0; i < arr.length; i += 3) { arr[i] = col.r; arr[i + 1] = col.g; arr[i + 2] = col.b; }
+  const paint = (g, c, jacket = 0) => {
+    const n = g.attributes.position.count, arr = new Float32Array(n * 3), m = new Float32Array(n).fill(jacket);
+    for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
     g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-    return g.index ? g.toNonIndexed() : g;
+    g.setAttribute('jacket', new THREE.BufferAttribute(m, 1));
+    g.deleteAttribute('uv');
+    parts.push(g.index ? g.toNonIndexed() : g);
   };
-  const pants = lin('#2b3340'), skin = lin('#d9a786'), shirt = new THREE.Color(1, 1, 1);
-  for (const sx of [-0.1, 0.1]) {
-    const leg = new THREE.CylinderGeometry(0.075, 0.065, 0.85, 6); leg.translate(sx, 0.43, 0); parts.push(paint(leg, pants));
+  // Un volume tourné d'après un profil [[rayon, hauteur], …], aplati en profondeur.
+  const lathe = (profile, depth = 0.72, seg = 12) => {
+    const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+    g.scale(1, 1, depth);
+    return g;
+  };
+  // Un membre : un tronc de cône d'un point à un autre.
+  const limb = (a, b, ra, rb) => {
+    const d = new THREE.Vector3().subVectors(b, a), len = d.length();
+    const g = new THREE.CylinderGeometry(rb, ra, len, 8, 1);
+    g.translate(0, len / 2, 0);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+    g.translate(a.x, a.y, a.z);
+    return g;
+  };
+  const ball = (p, r, sx = 1, sy = 1, sz = 1) => { const g = new THREE.SphereGeometry(r, 10, 8); g.scale(sx, sy, sz); g.translate(p.x, p.y, p.z); return g; };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const skin = SKINS[look % SKINS.length], pants = PANTS[(look >> 1) % PANTS.length], hair = HAIR[(look + 1) % HAIR.length], white = new THREE.Color(1, 1, 1);
+  const shoe = lin('#2b2b2b');
+
+  // Les jambes, un peu écartées, et les chaussures.
+  for (const s of [-1, 1]) {
+    const hip = V(s * 0.095, 0.93, 0), knee = V(s * 0.11, 0.5, 0.02), ankle = V(s * 0.12, 0.09, 0);
+    paint(limb(hip, knee, 0.085, 0.058), pants);
+    paint(ball(knee, 0.058), pants);
+    paint(limb(knee, ankle, 0.058, 0.042), pants);
+    const foot = new THREE.BoxGeometry(0.1, 0.08, 0.26, 1, 1, 2); foot.translate(s * 0.12, 0.045, 0.05); paint(foot, shoe);
   }
-  const torso = new THREE.CapsuleGeometry(0.17, 0.38, 3, 8); torso.scale(1, 1, 0.7); torso.translate(0, 1.14, 0); parts.push(paint(torso, shirt));
-  for (const sx of [-1, 1]) {
-    const arm = new THREE.CylinderGeometry(0.05, 0.045, 0.62, 6); arm.translate(0, -0.31, 0); arm.rotateZ(sx * 0.25); arm.translate(sx * 0.22, 1.42, 0); parts.push(paint(arm, shirt));
+  // Le bassin et le buste (la veste), le cou.
+  paint(lathe([[0.001, 0.86], [0.15, 0.88], [0.165, 0.98], [0.15, 1.04]]), pants);
+  paint(lathe([[0.15, 1.0], [0.145, 1.08], [0.165, 1.22], [0.19, 1.36], [0.185, 1.43], [0.11, 1.48], [0.001, 1.49]]), white, 1);
+  paint(limb(V(0, 1.45, 0), V(0, 1.55, 0.01), 0.05, 0.048), skin);
+  // La tête, et des cheveux ou une casquette.
+  paint(ball(V(0, 1.64, 0.01), 0.1, 0.95, 1.18, 1.05), skin);
+  if (look % 3 === 2) {
+    const cap = new THREE.SphereGeometry(0.106, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.5); cap.scale(1, 0.8, 1.05); cap.translate(0, 1.67, 0.005); paint(cap, white, 1);
+    const visor = new THREE.CylinderGeometry(0.08, 0.08, 0.012, 10, 1, false, -Math.PI / 2, Math.PI); visor.scale(1, 1, 1.1); visor.translate(0, 1.672, 0.07); paint(visor, white, 1);
+  } else {
+    const h = new THREE.SphereGeometry(0.108, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.62); h.scale(0.97, 1.15, 1.06); h.translate(0, 1.645, -0.008); paint(h, hair);
   }
-  const head = new THREE.SphereGeometry(0.115, 10, 8); head.translate(0, 1.6, 0); parts.push(paint(head, skin));
+  // Les bras selon la posture.
+  const arm = (s, elbow, wrist) => {
+    const sh = V(s * 0.2, 1.42, 0);
+    paint(ball(sh, 0.062), white, 1);
+    paint(limb(sh, elbow, 0.058, 0.046), white, 1);
+    paint(ball(elbow, 0.046), white, 1);
+    paint(limb(elbow, wrist, 0.046, 0.036), white, 1);
+    paint(ball(wrist.clone().add(V(0, -0.02, 0)), 0.042, 0.8, 1.2, 0.9), skin);
+  };
+  for (const s of [-1, 1]) {
+    if (pose === 0) arm(s, V(s * 0.24, 1.14, -0.01), V(s * 0.23, 0.86, 0.04));
+    else if (pose === 1) arm(s, V(s * 0.36, 1.16, -0.04), V(s * 0.17, 1.0, 0.03));
+    else if (pose === 2) {
+      if (s === 1) arm(s, V(0.3, 1.66, 0.05), V(0.33, 1.92, 0.08));
+      else arm(s, V(-0.24, 1.14, -0.01), V(-0.23, 0.86, 0.04));
+    } else {
+      // Le téléphone, tendu à hauteur des yeux.
+      arm(s, V(s * 0.17, 1.28, 0.24), V(s * 0.045, 1.5, 0.4));
+      if (s === 1) { const ph = new THREE.BoxGeometry(0.075, 0.14, 0.012); ph.translate(0, 1.55, 0.42); paint(ph, lin('#1b1c1f')); }
+    }
+  }
   return mergeGeometries(parts);
 }
 
-export function createCourse(sim, sunDir) {
+export function createCourse(sim, sunDir, { groundTextures = null } = {}) {
   const { track } = sim;
   const group = new THREE.Group();
   group.name = 'course';
@@ -102,7 +161,7 @@ transformed.y += w * 0.01 * flex;`);
   };
   dynamic.push((t) => { tapeMat.userData.time.value = t; });
   const stakeGeo = new THREE.CylinderGeometry(0.018, 0.022, 1.0, 5); stakeGeo.translate(0, 0.5, 0);
-  const stakeMats = [];
+  const stakeMats = [], poleMats = [];
   const tapePos = [], tapeUV = [], tapeFlex = [], tapeSide = [], tapeIdx = [];
   const sEnd = arena ? arena.a + 4 : track.length;
   // Sur un pont, ce sont ses garde-corps : la rubalise s'interrompt.
@@ -121,7 +180,17 @@ transformed.y += w * 0.01 * flex;`);
     };
     for (let s = startRamp.b + 1; s < sEnd; s += spacing) {
       if (nearBridge(s)) { if (prev) closeRun(); continue; }
-      const u = sideSign * TAPE_U;
+      // Un tronçon large (le glacier) : des piquets orange tous les 8 m, sans rubalise.
+      const tw = track.tapeAt(s);
+      if (tw > 5.5) {
+        if (prev) closeRun();
+        if (Math.round(s / spacing) % 2 === 0) {
+          const fr = frameAt(track, s, sideSign * tw);
+          poleMats.push(m4.compose(fr.pos, q.setFromAxisAngle(up, rand() * 6), sc.set(1, 0.95 + rand() * 0.1, 1)).clone());
+        }
+        continue;
+      }
+      const u = sideSign * tw;
       const fr = frameAt(track, s, u);
       stakeMats.push(m4.compose(fr.pos, q.identity(), sc.set(1, 0.9 + rand() * 0.15, 1)).clone());
       const top = fr.pos.clone().add(new THREE.Vector3(0, 0.82, 0));
@@ -156,25 +225,25 @@ transformed.y += w * 0.01 * flex;`);
   stakeMats.forEach((m, i) => stakes.setMatrixAt(i, m));
   stakes.castShadow = true;
   group.add(stakes);
+  if (poleMats.length) {
+    // Les piquets de balisage : orange, la tête noire, 1,6 m.
+    const poleGeo = new THREE.CylinderGeometry(0.025, 0.03, 1.6, 6);
+    poleGeo.translate(0, 0.8, 0);
+    const pc = [], orange = lin('#f06a12'), dark = lin('#16181b');
+    for (let i = 0; i < poleGeo.attributes.position.count; i++) { const c = poleGeo.attributes.position.getY(i) > 1.35 ? dark : orange; pc.push(c.r, c.g, c.b); }
+    poleGeo.setAttribute('color', new THREE.Float32BufferAttribute(pc, 3));
+    const poles = new THREE.InstancedMesh(poleGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 }), poleMats.length);
+    poleMats.forEach((m, i) => poles.setMatrixAt(i, m));
+    poles.castShadow = true;
+    group.add(poles);
+  }
 
   // ---------- Les cailloux du pierrier et les racines, là où la physique les a mis ----------
-  const rockGeo = (() => {
-    const g = new THREE.IcosahedronGeometry(1, 2);
-    const ps = g.attributes.position, c = [];
-    const grey = lin('#9a958b'), dark = lin('#625e57');
-    for (let i = 0; i < ps.count; i++) {
-      const x = ps.getX(i), y = ps.getY(i), z = ps.getZ(i);
-      const n = 1 + 0.22 * fbm(x * 1.7 + 3, z * 1.7 + y, 3, 4);
-      ps.setXYZ(i, x * n, Math.max(y, -0.3) * n, z * n);
-      const cc = dark.clone().lerp(grey, 0.5 + 0.5 * fbm(x * 4, y * 4 + z, 2, 8));
-      c.push(cc.r, cc.g, cc.b);
-    }
-    g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
-    g.computeVertexNormals();
-    return g;
-  })();
+  const rockGeo = rockGeometry(11, { detail: 2, cuts: 6 });
+  const rockMat = rockMaterial(groundTextures, { moss: 0.15, alpine: track.map.env.treeline != null });
+  const wetRock = rockMaterial(groundTextures, { moss: 0, wet: true });
   if (track.rocks.length) {
-    const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), track.rocks.length);
+    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, track.rocks.length);
     track.rocks.forEach((rk, i) => {
       const fr = frameAt(track, rk.s, rk.u);
       // Le sommet du caillou à la hauteur de la bosse de la physique.
@@ -210,7 +279,7 @@ transformed.y += w * 0.01 * flex;`);
       const fr = frameAt(track, f.lipS - 0.2, u);
       const r = 0.55 + rand() * 0.25;
       q.setFromEuler(new THREE.Euler(0, rand() * 6, 0));
-      const m = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }));
+      const m = new THREE.Mesh(rockGeo, rockMat);
       m.position.copy(fr.pos).add(new THREE.Vector3(0, -0.62, 0));
       m.quaternion.copy(q);
       m.scale.set(r, 0.62, r * 0.8);
@@ -334,7 +403,7 @@ transformed.y += w * 0.01 * flex;`);
         for (let k2 = 0; k2 < 3; k2++) {
           const fr = frameAt(track, s + (rand() - 0.5) * 2, side * (2.3 + rand() * 1.2));
           const r = 0.6 + rand() * 0.5;
-          const m = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }));
+          const m = new THREE.Mesh(rockGeo, rockMat);
           m.position.copy(fr.pos).add(new THREE.Vector3(0, -r * 0.4, 0));
           m.rotation.y = rand() * 6;
           m.scale.set(r, r * 0.8, r);
@@ -351,22 +420,25 @@ transformed.y += w * 0.01 * flex;`);
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     const N = Math.ceil(curve.getLength() / 2);
     const wpos = [], wuv = [], widx = [];
-    let along = 0, prevP = null, rows = 0;
+    let along = 0, prevP = null, rows = 0, run = 0; // run : rangées d'affilée (le torrent peut sortir de la bande et y revenir)
     for (let i = 0; i <= N; i++) {
       const c = curve.getPointAt(i / N), tg = curve.getTangentAt(i / N);
       if (prevP) along += prevP.distanceTo(c);
       prevP = c.clone();
       // Seulement sur le relief détaillé (au-delà, le relief lointain est trop grossier pour son ravin).
       const B = track.bounds;
-      if (c.x < B.xmin + 3 || c.x > B.xmax - 3 || c.z < B.zmin + 3 || c.z > B.zmax - 3) { if (rows) break; continue; }
+      const out = track.band !== null ? track.trailDist(c.x, c.z) > track.band - 4 : c.x < B.xmin + 3 || c.x > B.xmax - 3 || c.z < B.zmin + 3 || c.z > B.zmax - 3;
+      if (out) { if (rows && track.band === null) break; run = 0; continue; }
       const nx = tg.z, nz = -tg.x;
       for (const w of [-1.3, 1.3]) {
         const x = c.x + nx * w, z = c.z + nz * w;
-        wpos.push(x, track.natural(c.x, c.z) + 0.3, z);
+        // (sur une piste en bande, jamais à plus de 10 cm au-dessus du sol : au gué, la piste passe plus bas que le lit)
+        const wy = track.natural(c.x, c.z) + 0.3;
+        wpos.push(x, track.band !== null ? Math.min(wy, track.groundY(x, z) + 0.1) : wy, z);
         wuv.push(w / 2.6 + 0.5, along);
       }
-      if (rows > 0) { const o = (rows - 1) * 2; widx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
-      rows++;
+      if (run > 0) { const o = (rows - 1) * 2; widx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
+      rows++; run++;
     }
     const wgeo = new THREE.BufferGeometry();
     wgeo.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
@@ -415,6 +487,8 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
       g.add(cell);
     }
     const tex = bannerTexture(text, color);
+    // Une banderole très large répète son texte (sinon il serait étiré).
+    if (2 * half > 12) { tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = Math.round((2 * half) / 7); }
     const banner = new THREE.Mesh(new THREE.BoxGeometry(2 * half, 0.75, 0.05), [black, black, black, black, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 })]);
     banner.position.copy(fr.pos).add(new THREE.Vector3(0, height + 0.35, 0));
     banner.rotation.y = fr.yaw;
@@ -425,9 +499,9 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
   };
   let inter = 0;
   for (const gate of track.gates) {
-    if (gate.kind === 'point') archBanner(gate.s, `INTER ${++inter}`, '#1d5fb8');
+    if (gate.kind === 'point') archBanner(gate.s, `INTER ${++inter}`, '#1d5fb8', Math.max(4.2, track.tapeAt(gate.s) + 0.8));
   }
-  archBanner(track.speedTrap, 'RADAR', '#e0a21b', 4, 3.0);
+  archBanner(track.speedTrap, 'RADAR', '#e0a21b', Math.max(4, track.tapeAt(track.speedTrap) + 0.8), 3.0);
 
   // ---------- La cabane de départ ----------
   {
@@ -575,19 +649,229 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
     const s0 = f.type === 'rocks' ? f.a : f.lipS - 4, s1 = f.type === 'rocks' ? f.b : f.lipS + 16;
     for (let k = 0; k < 26; k++) {
       const s = s0 + rand() * (s1 - s0), side = rand() < 0.5 ? -1 : 1;
-      const pf = frameAt(track, s, side * (TAPE_U + 1.2 + rand() * 3.5));
+      const pf = frameAt(track, s, side * (track.tapeAt(s) + 1.2 + rand() * 3.5));
       if (track.treeNear(pf.pos.x, pf.pos.z, 0.5)) continue;
       addPerson(pf.pos, frameAt(track, s).pos);
     }
   }
+  // ---------- Le départ en ligne : une banderole d'un piquet à l'autre, devant la grille, et du public ----------
+  if (track.map.peloton && track.map.peloton.cols) {
+    const sB = track.gates[0].s + (track.map.peloton.offset ?? 4) + 3 * (track.map.peloton.rowGap ?? 3.2) + 2;
+    const half = track.tapeAt(sB) - 0.5;
+    archBanner(sB, "L'AVALANCHE · DÉPART", '#c4161c', half, 3.2);
+    for (let k = 0; k < 90; k++) {
+      const s = track.sStart + 10 + rand() * 70, side = rand() < 0.5 ? -1 : 1;
+      const pf = frameAt(track, s, side * (track.tapeAt(s) + 1.5 + rand() * 6));
+      addPerson(pf.pos, frameAt(track, s).pos);
+    }
+  }
+
+  // ---------- Le glacier : des séracs, blocs de glace anguleux groupés en chutes sur ses bords ----------
+  // Un bloc : de la glace débitée par des plans de fracture, plus haute que large ; le dessus enneigé, des flancs de
+  // glace bleutée (voir rocks.js). Trois formes, pour que les amas ne se répètent pas.
+  const snowZone = track.surfaces.find((z) => z.surface === 'neige');
+  if (snowZone) {
+    const iceGeos = [21, 22, 23].map((seed) => {
+      // (des plans de fracture profonds et presque verticaux : des faces de glace nettes)
+      const g = rockGeometry(seed, { detail: 2, cuts: 11, rough: 0.05, flat: -0.6, depth: [0.4, 0.7], stretch: 0.95 });
+      g.translate(0, 0.5, 0);
+      return g;
+    });
+    const iceMat = iceMaterial(groundTextures);
+    const iceMats = [];
+    for (let c = 0; c < 26; c++) {
+      // Une chute de séracs : un amas de blocs, au bord du glacier.
+      const s0 = snowZone.a + 60 + rand() * (snowZone.b - snowZone.a - 80), side = rand() < 0.5 ? -1 : 1;
+      const u0 = side * (track.tapeAt(s0) + 16 + rand() * 22);
+      for (let k = 0, nk = 5 + Math.floor(rand() * 7); k < nk; k++) {
+        const s = s0 + (rand() - 0.5) * 22, u = u0 + (rand() - 0.5) * 16;
+        if (Math.abs(u) < track.tapeAt(s) + 8) continue;
+        const fr = frameAt(track, s, u);
+        const y = track.groundY(fr.pos.x, fr.pos.z);
+        const r = 1.4 + Math.pow(rand(), 1.5) * 3.2, hgt = r * (1.4 + rand() * 1.4);
+        iceMats.push(m4.compose(p.set(fr.pos.x, y - 0.6, fr.pos.z), q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.35, rand() * 6, (rand() - 0.5) * 0.35)), sc.set(r * 1.15, hgt * 0.7, r * (0.85 + rand() * 0.4))).clone());
+      }
+    }
+    iceGeos.forEach((geo, gi) => {
+      const mine = iceMats.filter((_, i) => i % iceGeos.length === gi);
+      const ice = new THREE.InstancedMesh(geo, iceMat, mine.length);
+      mine.forEach((m, i) => ice.setMatrixAt(i, m));
+      ice.castShadow = ice.receiveShadow = true;
+      ice.name = 'séracs';
+      group.add(ice);
+    });
+  }
+
+  // ---------- Les pistes forestières qu'on traverse ----------
+  const roadStrip = (sRoad, half = 2.2, L = 90) => {
+    const fr = frameAt(track, sRoad);
+    const pos = [], uv = [], idx = [], n = 90;
+    for (let i = 0; i <= n; i++) {
+      const t = -L / 2 + (i / n) * L;
+      for (const w of [-half, half]) {
+        const x = fr.pos.x + fr.right.x * t + fr.fwd.x * w, z = fr.pos.z + fr.right.z * t + fr.fwd.z * w;
+        pos.push(x, track.groundY(x, z) + 0.05, z);
+        uv.push(w / 4, t / 4);
+      }
+      if (i < n) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const road = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: gravel, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+    road.receiveShadow = true;
+    group.add(road);
+  };
+  for (const f of track.features.filter((f) => f.type === 'road')) roadStrip((f.a + f.b) / 2);
+
+  // ---------- Le gué : le torrent coule en travers de la piste ----------
+  for (const f of track.features.filter((f) => f.type === 'ford')) {
+    const sm = (f.a + f.b) / 2, fr = frameAt(track, sm);
+    // L'axe du torrent au gué (le segment de son tracé le plus proche), et un ruban d'eau posé sur le sol, dans cet axe.
+    let dir = new THREE.Vector3(fr.right.x, 0, fr.right.z);
+    if (track.map.creek) {
+      let best = Infinity;
+      const C = track.map.creek;
+      for (let i = 0; i + 1 < C.length; i++) {
+        const d = Math.hypot((C[i][0] + C[i + 1][0]) / 2 - fr.pos.x, (C[i][1] + C[i + 1][1]) / 2 - fr.pos.z);
+        if (d < best) { best = d; dir = new THREE.Vector3(C[i + 1][0] - C[i][0], 0, C[i + 1][1] - C[i][1]).normalize(); }
+      }
+    }
+    const side = new THREE.Vector3(-dir.z, 0, dir.x);
+    const wpos = [], wuv = [], widx = [];
+    const n = 48;
+    for (let i = 0; i <= n; i++) {
+      const t = -12 + (24 * i) / n;
+      for (const w of [-0.9, 0.9]) {
+        const x = fr.pos.x + dir.x * t + side.x * w, z = fr.pos.z + dir.z * t + side.z * w;
+        wpos.push(x, track.groundY(x, z) + 0.04, z);
+        wuv.push(w / 1.8 + 0.5, t);
+      }
+      if (i < n) { const k = i * 2; widx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(wuv, 2));
+    g.setIndex(widx);
+    g.computeVertexNormals();
+    const water = group.getObjectByName('torrent');
+    const ford = new THREE.Mesh(g, water ? water.material : new THREE.MeshStandardMaterial({ color: lin('#5d8a8f'), roughness: 0.12, transparent: true, opacity: 0.85 }));
+    ford.name = 'gué';
+    ford.receiveShadow = true;
+    group.add(ford);
+    // Quelques galets de part et d'autre.
+    for (let k = 0; k < 14; k++) {
+      const side = rand() < 0.5 ? -1 : 1, u = side * (track.tapeAt(sm) + 0.5 + rand() * 4), ds = (rand() - 0.5) * (f.b - f.a + 4);
+      const x = fr.pos.x + fr.right.x * u + fr.fwd.x * ds, z = fr.pos.z + fr.right.z * u + fr.fwd.z * ds;
+      const r = 0.25 + rand() * 0.45;
+      const m = new THREE.Mesh(rockGeo, wetRock);
+      m.position.set(x, track.groundY(x, z) - r * 0.3, z);
+      m.scale.set(r, r * 0.6, r * 0.9);
+      m.rotation.y = rand() * 6;
+      m.castShadow = m.receiveShadow = true;
+      group.add(m);
+    }
+  }
+
+  // ---------- Le village : maisons de pierre ou crépies, toits de lauze, volets, fontaine sur la place ----------
+  if (track.buildings.length) {
+    // Des photos (Poly Haven, CC0 ; voir groundLayers.js) : la couleur et le relief. Les coordonnées de texture des murs
+    // comptent un tour tous les 3 m, celles des toits tous les 1,5 m : on répète chaque photo à sa taille réelle.
+    const loader = new THREE.TextureLoader();
+    const photo = (name, repeat) => {
+      const load = (part, srgb) => {
+        const t = loader.load(`${import.meta.env.BASE_URL}textures/${name}-${part}.jpg`);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(repeat, repeat);
+        t.anisotropy = 8;
+        if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+      };
+      return { map: load('couleur', true), normalMap: load('relief', false) };
+    };
+    const stone = photo('pierre', 3 / 2.5), plaster = photo('crepi', 3 / 1.4), slate = photo('lauze', 1.5 / 3), wood = photo('bois', 3 / 2);
+    // Une vitre : presque noire (l'intérieur est sombre), elle ne renvoie le ciel qu'en biais.
+    const windowMat = new THREE.MeshStandardMaterial({ color: lin('#1c2228'), roughness: 0.04, metalness: 0 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: lin('#e9e4d8'), roughness: 0.7 });
+    const frameGeos = [];
+    // Des volets peints, sur du bois usé.
+    const shutterCols = ['#5d8a68', '#8a6a4c', '#5a7491', '#a2493c'].map((c) => new THREE.MeshStandardMaterial({ ...wood, color: lin(c), roughness: 0.85 }));
+    const wallMats = [new THREE.MeshStandardMaterial({ ...stone, roughness: 0.95 }), new THREE.MeshStandardMaterial({ ...plaster, color: lin('#efe4d0'), roughness: 0.95 })];
+    const roofMat = new THREE.MeshStandardMaterial({ ...slate, roughness: 0.8, side: THREE.DoubleSide });
+    const wallGeos = [[], []], roofGeos = [], winGeos = [], shutGeos = [[], [], [], []];
+    const mat4 = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
+    for (const b of track.buildings) {
+      const yawQ = new THREE.Quaternion().setFromAxisAngle(up, b.yaw);
+      const place = (g, x, y, z) => g.applyMatrix4(mat4.compose(new THREE.Vector3(x, y, z).applyQuaternion(yawQ).add(new THREE.Vector3(b.x, b.y, b.z)), yawQ, one));
+      // Les murs : la profondeur en travers de la ruelle (x), la largeur le long (z).
+      const wg = new THREE.BoxGeometry(b.d, b.h, b.w);
+      const uv = wg.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * Math.max(b.d, b.w)) / 3, (uv.getY(i) * b.h) / 3);
+      wallGeos[b.hue < 0.6 ? 0 : 1].push(place(wg, 0, b.h / 2, 0));
+      // Le toit à deux pans, le faîte le long de la ruelle, qui déborde un peu.
+      const rh = 2 + b.roof * 1.6, ox = b.d / 2 + 0.5, oz = b.w / 2 + 0.4;
+      const rg = new THREE.BufferGeometry();
+      rg.setAttribute('position', new THREE.Float32BufferAttribute([-ox, 0, -oz, 0, rh, -oz, ox, 0, -oz, -ox, 0, oz, 0, rh, oz, ox, 0, oz], 3));
+      rg.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, rh, 0, 0, oz, 0, oz, rh, oz, 0].map((x) => x / 1.5), 2));
+      rg.setIndex([0, 1, 3, 1, 4, 3, 1, 2, 4, 2, 5, 4, 0, 2, 1, 3, 4, 5]);
+      rg.computeVertexNormals();
+      roofGeos.push(place(rg, 0, b.h, 0));
+      // Les fenêtres et leurs volets, sur les deux longs côtés.
+      for (const face of [-1, 1]) {
+        const x = face * (b.d / 2 + 0.02);
+        for (let fl = 0; fl < (b.h > 6.5 ? 2 : 1); fl++) {
+          for (let k = -1; k <= 1; k += 2) {
+            const z = k * b.w * 0.25, y = 1.6 + fl * 2.6;
+            // L'encadrement clair, puis la vitre en retrait de quelques centimètres.
+            // (un cadre : quatre montants autour de la vitre)
+            frameGeos.push(place(new THREE.BoxGeometry(0.06, 0.11, 0.98), x, y + 0.585, z), place(new THREE.BoxGeometry(0.06, 0.11, 0.98), x, y - 0.585, z));
+            frameGeos.push(place(new THREE.BoxGeometry(0.06, 1.28, 0.11), x, y, z - 0.435), place(new THREE.BoxGeometry(0.06, 1.28, 0.11), x, y, z + 0.435));
+            winGeos.push(place(new THREE.BoxGeometry(0.03, 1.06, 0.76), x, y, z));
+            frameGeos.push(place(new THREE.BoxGeometry(0.09, 0.05, 0.76), x, y, z), place(new THREE.BoxGeometry(0.09, 1.06, 0.05), x, y, z));
+            shutGeos[Math.floor(b.roof * 3.999)].push(place(new THREE.BoxGeometry(0.08, 1.15, 0.36), x, y, z - 0.6), place(new THREE.BoxGeometry(0.08, 1.15, 0.36), x, y, z + 0.6));
+          }
+        }
+      }
+    }
+    const addMerged = (geos, mat) => { if (!geos.length) return; const m = new THREE.Mesh(mergeGeometries(geos), mat); m.castShadow = m.receiveShadow = true; group.add(m); };
+    addMerged(wallGeos[0], wallMats[0]); addMerged(wallGeos[1], wallMats[1]); addMerged(roofGeos, roofMat); addMerged(winGeos, windowMat); addMerged(frameGeos, frameMat);
+    shutGeos.forEach((g, i) => addMerged(g, shutterCols[i]));
+
+    // La fontaine sur la place, à côté de l'arrivée.
+    const fr = frameAt(track, track.sFinish + 14, -9);
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 0.7, 20, 1, true), wallMats[0]);
+    basin.position.copy(fr.pos).add(new THREE.Vector3(0, 0.35, 0));
+    const water = group.getObjectByName('torrent');
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(1.45, 20), water ? water.material : windowMat);
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.copy(fr.pos).add(new THREE.Vector3(0, 0.55, 0));
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 1.8, 10), wallMats[0]);
+    pillar.position.copy(fr.pos).add(new THREE.Vector3(0, 0.9, 0));
+    for (const m of [basin, pillar]) { m.castShadow = m.receiveShadow = true; group.add(m); }
+    group.add(pool);
+
+    // Le public dans la ruelle, entre les maisons.
+    const V = track.village;
+    for (let k = 0; k < 140; k++) {
+      const s = V.a + rand() * (track.sFinish - 60 - V.a), side = rand() < 0.5 ? -1 : 1;
+      const pf = frameAt(track, s, side * (track.tapeAt(s) + 0.9 + rand() * 1.2));
+      if (track.buildings.some((b) => Math.hypot(pf.pos.x - b.x, pf.pos.z - b.z) < Math.max(b.w, b.d) / 2 + 0.6)) continue;
+      addPerson(pf.pos, frameAt(track, s).pos);
+    }
+  }
+
   {
-    const geo = personGeometry();
+    const geos = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => personGeometry(k % 4, k));
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
     mat.userData.time = { value: 0 };
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = mat.userData.time;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float jacket;')
+        // Seule la veste prend la couleur de chacun.
+        .replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(color.rgb, vColor.rgb, jacket);')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
 float ph = instanceMatrix[3].x * 1.7 + instanceMatrix[3].z * 2.3;
@@ -595,17 +879,22 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
 #endif`);
     };
     dynamic.push((t) => { mat.userData.time.value = t; });
-    const crowd = new THREE.InstancedMesh(geo, mat, people.length);
-    const shirts = ['#d42a1f', '#1d5fb8', '#f2c230', '#2b9348', '#ffffff', '#ff7a1a', '#7b2cbf', '#111111', '#e85d9b', '#4cc9f0'].map(lin);
-    people.forEach((pp, i) => {
-      q.setFromAxisAngle(up, pp.yaw);
-      const sz = 0.92 + rand() * 0.16;
-      crowd.setMatrixAt(i, m4.compose(pp.pos, q, sc.set(sz, sz, sz)));
-      crowd.setColorAt(i, shirts[Math.floor(pp.hue * shirts.length)]);
+    // Des vestes de montagne : quelques couleurs vives, beaucoup de teintes sourdes.
+    const shirts = ['#c8352a', '#2d5e9e', '#e0b23a', '#3f7d4e', '#e8e6df', '#e26a2c', '#5b4b8a', '#26282c', '#7d8a95', '#8a6a4a', '#34536b', '#a33c5c'].map(lin);
+    geos.forEach((geo, gi) => {
+      const mine = people.filter((_, i) => i % geos.length === gi);
+      if (!mine.length) return;
+      const crowd = new THREE.InstancedMesh(geo, mat, mine.length);
+      mine.forEach((pp, i) => {
+        q.setFromAxisAngle(up, pp.yaw);
+        const sz = 0.92 + rand() * 0.16;
+        crowd.setMatrixAt(i, m4.compose(pp.pos, q, sc.set(sz, sz, sz)));
+        crowd.setColorAt(i, shirts[Math.floor(pp.hue * shirts.length)]);
+      });
+      crowd.castShadow = true;
+      crowd.computeBoundingSphere();
+      group.add(crowd);
     });
-    crowd.castShadow = true;
-    crowd.computeBoundingSphere();
-    group.add(crowd);
   }
 
   // ---------- Protections sur les arbres proches de la piste, panneaux avant les virages ----------
@@ -635,7 +924,7 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
       if (Math.abs(k) < 0.045 || s - last < 40) continue;
       last = s;
       const side = -Math.sign(k); // à l'extérieur du virage
-      const f = frameAt(track, s + 14, side * (TAPE_U + 0.6));
+      const f = frameAt(track, s + 14, side * (track.tapeAt(s + 14) + 0.6));
       const board = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), signMat);
       board.position.copy(f.pos).add(new THREE.Vector3(0, 1.1, 0));
       board.rotation.y = f.yaw + Math.PI;

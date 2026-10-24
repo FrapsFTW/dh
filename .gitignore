@@ -5,3 +5,6 @@ shots/
 
 # Le modèle 3D d’origine (80 Mo) : public/models/bike.glb en est la version préparée (npm run prepare-bike)
 /20261018170123_b442c697.glb
+
+# Les originaux des textures téléchargées (npm run textures les refait)
+tools/.cache/

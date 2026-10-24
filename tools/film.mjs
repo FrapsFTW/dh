@@ -1,7 +1,8 @@
 // Tournage : des plans du peloton, image par image, à pas fixe (le rendu logiciel est trop lent pour filmer en temps
 // réel). Chaque plan donne des images JPEG, et une animation WebP s'il en a plusieurs.
 //   node tools/film.mjs [plan…]      → shots/film/<plan>/*.jpg et shots/film/<plan>.webp
-// Le saut, le virage et l'arrivée sont choisis d'après le peloton enregistré (public/peloton/alpes.bin).
+//   CARTE=avalanche node tools/film.mjs depart   (La Grande Combe par défaut)
+// Le saut, le virage et l'arrivée sont choisis d'après le peloton enregistré (public/peloton/<carte>.bin).
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
@@ -14,8 +15,10 @@ const BROWSERS = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 const W = +(process.env.W || 960), H = +(process.env.H || 540), FPS = 24;
 
 // ---------- Les moments à filmer, trouvés dans les données ----------
-const track = createTrack(7, 'alpes');
-const runs = decodePeloton(new Uint8Array(readFileSync('public/peloton/alpes.bin')));
+const MAP = process.env.CARTE || 'alpes';
+const track = createTrack(7, MAP);
+const runs = decodePeloton(new Uint8Array(readFileSync(`public/peloton/${MAP}.bin`)));
+const wide = !!(track.map.peloton && track.map.peloton.cols); // une grille large (le glacier)
 const front = gridSlots(track)[0].s;
 const at = (run, t, k) => run.d[Math.min(run.count - 1, Math.round(t * 10)) * POSE_SIZE + k];
 const timeAt = (run, s) => { for (let j = 0; j < run.count; j++) if (run.d[j * POSE_SIZE + POSE.s] >= s) return j / 10; return Infinity; };
@@ -39,7 +42,7 @@ console.log(`whip : n° ${whip.run.num} à ${whipS.toFixed(0)} m (${whip.a.t0.to
 // Dans la page : la caméra de bord de piste à (s, u) du tracé, h mètres au-dessus du sol.
 const tvAt = (s, u, h, follow, fov = 40) => `(() => { const t = __game.sim.track, f = t.sample(${s}); __game.setTV({ pos: [f.x + f.rx * ${u}, t.trailY(${s}, ${u}) + ${h}, f.z + f.rz * ${u}], follow: ${JSON.stringify(follow)}, fov: ${fov} }); })()`;
 // Le joueur posé à l'écart, immobile et caché, le temps de filmer les rivaux ailleurs sur la piste.
-const away = (s) => `?carte=alpes&film&shot&nohud&nohelp&depart=${s.toFixed(0)}&vitesse=0`;
+const away = (s) => `?carte=${MAP}&film&shot&nohud&nohelp&depart=${s.toFixed(0)}&vitesse=0`;
 const stageOnly = `(() => { __game.showPeloton(); Object.assign(__game.stage, { freeze: true, hidePlayer: true }); })()`;
 const range = (t0, t1) => Array.from({ length: Math.round((t1 - t0) * FPS) }, (_, i) => t0 + i / FPS);
 
@@ -49,15 +52,15 @@ const range = (t0, t1) => Array.from({ length: Math.round((t1 - t0) * FPS) }, (_
  */
 const SCENES = {
   // Le premier rang sur la grille, pied à terre : les tenues de près.
-  portrait: { query: '?carte=alpes&peloton&film&shot&nohud&nohelp', setup: tvAt(front + 6, 0.9, 1.25, 2, 30), pre: [0.1, 20], frames: 1, dt: 0.04 },
+  portrait: { query: `?carte=${MAP}&peloton&film&shot&nohud&nohelp`, setup: tvAt(front + 6, 0.9, 1.25, 2, 30), pre: [0.1, 20], frames: 1, dt: 0.04 },
   // Le joueur sur la grille, vue extérieure, avec l'affichage (place, rivaux sur la barre de progression).
-  grille: { query: '?carte=alpes&peloton&film&shot&nohelp&cam=chase', pre: [0.1, 20], frames: 1, dt: 0.04 },
+  grille: { query: `?carte=${MAP}&peloton&film&shot&nohelp&cam=chase`, pre: [0.1, 20], frames: 1, dt: 0.04 },
   // Le GO : le peloton s'élance, vu du bord de la grille.
-  depart: { query: '?carte=alpes&peloton&film&shot&nohud&nohelp&autopilot', setup: tvAt(front + 7, -3.6, 1.3, 5, 40), pre: [0.25, 14], frames: 72, dt: 1 / FPS },
+  depart: { query: `?carte=${MAP}&peloton&film&shot&nohud&nohelp&autopilot`, setup: wide ? tvAt(front + 4, -11, 1.4, 3, 46) : tvAt(front + 7, -3.6, 1.3, 5, 40), pre: [0.25, 14], frames: 72, dt: 1 / FPS },
   // Dans le peloton, en vue subjective, cinq secondes après le GO.
-  casque: { query: '?carte=alpes&peloton&film&shot&nohelp&autopilot', pre: [0.25, 36], frames: 1, dt: 0.04 },
+  casque: { query: `?carte=${MAP}&peloton&film&shot&nohelp&autopilot`, pre: [0.25, 36], frames: 1, dt: 0.04 },
   // Le même moment de l'extérieur.
-  exterieur: { query: '?carte=alpes&peloton&film&shot&nohud&nohelp&autopilot&cam=chase', pre: [0.25, 34], frames: 1, dt: 0.04 },
+  exterieur: { query: `?carte=${MAP}&peloton&film&shot&nohud&nohelp&autopilot&cam=chase`, pre: [0.25, 34], frames: 1, dt: 0.04 },
   // Un whip, vu de côté.
   whip: { query: away(whipS - 40), setup: `${stageOnly};${tvAt(whipS + 2, -whip.a.dir * 8, 2.4, whip.run.num, 20)}`, times: range(whip.a.t0 - 0.8, whip.a.t1 + 0.5) },
   // Le peloton dans un virage, vu de l'intérieur.
@@ -77,7 +80,8 @@ try {
   for (const name of scenes) {
     const sc = SCENES[name];
     if (!sc) { console.error(`plan inconnu : ${name}`); continue; }
-    const dir = `shots/film/${name}`;
+    const out = `${MAP === 'alpes' ? '' : MAP + '-'}${name}`; // (les plans d'une autre piste ne remplacent pas ceux de La Grande Combe)
+    const dir = `shots/film/${out}`;
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     const page = await browser.newPage({ viewport: { width: W, height: H } });
@@ -102,8 +106,8 @@ try {
     await page.close();
     if (times.length > 2) {
       const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).sort().map((f) => `${dir}/${f}`);
-      await sharp(files, { join: { animated: true } }).webp({ quality: 72, delay: Math.round(1000 / FPS), loop: 0 }).toFile(`shots/film/${name}.webp`);
-      console.log(`  → shots/film/${name}.webp`);
+      await sharp(files, { join: { animated: true } }).webp({ quality: 72, delay: Math.round(1000 / FPS), loop: 0 }).toFile(`shots/film/${out}.webp`);
+      console.log(`  → shots/film/${out}.webp`);
     }
   }
 } finally {

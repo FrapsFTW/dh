@@ -41,14 +41,20 @@ export const PLAYER = { num: 21, slot: 10 };
 
 const COLS = [-1.5, 0, 1.5], ROW_GAP = 3.2;
 
-/** Les places sur la grille, juste après l'arche de départ : rangs de trois, le premier devant. */
+/**
+ * Les places sur la grille, juste après l'arche de départ : rangs de trois, le premier devant. Une carte large peut en
+ * demander plus de front (map.peloton : cols, colGap, rowGap, et offset, la distance de l'arche au dernier rang).
+ */
 export function gridSlots(track, count = ROSTER.length + 1) {
-  const rows = Math.ceil(count / COLS.length);
-  const front = track.gates[0].s + 4 + (rows - 1) * ROW_GAP;
+  const cfg = track.map.peloton || {};
+  const cols = cfg.cols ? Array.from({ length: cfg.cols }, (_, i) => (i - (cfg.cols - 1) / 2) * cfg.colGap) : COLS;
+  const gap = cfg.rowGap || ROW_GAP;
+  const rows = Math.ceil(count / cols.length);
+  const front = track.gates[0].s + (cfg.offset ?? 4) + (rows - 1) * gap;
   const slots = [];
   for (let i = 0; i < count; i++) {
-    const row = Math.floor(i / COLS.length), col = i % COLS.length;
-    slots.push({ s: front - row * ROW_GAP, u: COLS[col] * (row % 2 ? 0.95 : 1) });
+    const row = Math.floor(i / cols.length), col = i % cols.length;
+    slots.push({ s: front - row * gap, u: cols[col] * (row % 2 ? 0.95 : 1) });
   }
   return slots;
 }
@@ -60,9 +66,10 @@ export function riderSlot(index) {
 
 /**
  * La trajectoire d'un rival : son côté préféré, qui ondule lentement, ramené au milieu sur les sauts, les ponts et les
- * pierriers (là où tout le monde passe au même endroit).
+ * pierriers (là où tout le monde passe au même endroit). Sur un tronçon large (le glacier), il garde à peu près sa
+ * place de la grille (gridU), et rejoint les autres quand le couloir se resserre.
  */
-export function lineFor(track, rider, seed) {
+export function lineFor(track, rider, seed, gridU = 0) {
   const r = rng(seed);
   const w1 = 35 + r() * 40, w2 = 90 + r() * 60, p1 = r() * 6.28, p2 = r() * 6.28;
   const narrow = track.features.filter((f) => f.type === 'jump' || f.type === 'bridge' || f.type === 'rocks' || f.type === 'slab');
@@ -75,7 +82,14 @@ export function lineFor(track, rider, seed) {
     }
     if (track.onBridge && track.onBridge(s)) k = 0;
     u *= k;
-    return Math.max(-1.5, Math.min(1.5, u));
+    u = Math.max(-1.5, Math.min(1.5, u));
+    const tape = track.tapeAt(s);
+    if (tape > 4) {
+      const w = Math.min(1, (tape - 3.4) / 12);
+      u = u * (1 - w) + w * (gridU * 0.9 + 2.5 * Math.sin(s / w1 + p1));
+      u = Math.max(-(tape - 2), Math.min(tape - 2, u));
+    }
+    return u;
   };
 }
 
@@ -110,6 +124,8 @@ export function placeOnGrid(sim, slot) {
   sim.race.s = slot.s;
   sim.race.u = slot.u;
   sim.race.reached = slot.s;
+  // La grille est après l'arche : le chrono partira au GO, pas en la franchissant.
+  sim.race.next = sim.track.gates.findIndex((g) => g.kind !== 'depart' && g.s > slot.s);
   for (let i = 0; i < 1.5 / STEP; i++) sim.step(HOLD);
 }
 
@@ -120,7 +136,7 @@ export function placeOnGrid(sim, slot) {
 export function recordRider(sim, rider, slot, { pace = rider.pace, seed = rider.num * 31 + 7, maxTime = 900 } = {}) {
   placeOnGrid(sim, slot);
   sim._autopilot = null;
-  const line = lineFor(sim.track, rider, seed);
+  const line = lineFor(sim.track, rider, seed, slot.u);
   const pose = [];
   const push = () => {
     const b = sim.bike, t = b.body.translation(), r = b.body.rotation(), [wf, wr] = b.wheels, inp = b.input || {};

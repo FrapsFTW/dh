@@ -11,7 +11,6 @@ import { trickName } from '../src/sim/tricks.js';
 import { MAP_IDS } from '../src/sim/maps.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { ROSTER, decodePeloton, gridSlots, riderSlot, POSE, POSE_SIZE } from '../src/sim/peloton.js';
-import { TAPE_U } from '../src/sim/track.js';
 
 await initPhysics();
 
@@ -381,9 +380,74 @@ test('le peloton enregistré correspond à chaque piste : vingt rivaux, partis d
       const f = t.sample(slots[riderSlot(i)].s), u = slots[riderSlot(i)].u;
       assert.ok(Math.hypot(r.d[0] - (f.x + f.rx * u), r.d[2] - (f.z + f.rz * u)) < 0.5, `${m}, n° ${r.num} : pas parti de sa place (piste modifiée ?)`);
       assert.ok(r.finish > 0 && r.d[(r.count - 1) * POSE_SIZE + POSE.s] >= t.sFinish, `${m}, n° ${r.num} : pas arrivé`);
-      let worst = 0;
-      for (let j = 0; j < r.count; j++) worst = Math.max(worst, Math.abs(t.nearest(r.d[j * POSE_SIZE], r.d[j * POSE_SIZE + 2], r.d[j * POSE_SIZE + 3], 25).u));
-      assert.ok(worst < TAPE_U, `${m}, n° ${r.num} : à ${worst.toFixed(1)} m du milieu`);
+      // (le balisage : la rubalise, ou les piquets d'un tronçon large)
+      let worst = -Infinity, at = 0;
+      for (let j = 0; j < r.count; j++) {
+        const q = t.nearest(r.d[j * POSE_SIZE], r.d[j * POSE_SIZE + 2], r.d[j * POSE_SIZE + 3], 25);
+        const over = Math.abs(q.u) - t.tapeAt(q.s);
+        if (over > worst) { worst = over; at = q.s; }
+      }
+      assert.ok(worst < 0, `${m}, n° ${r.num} : ${worst.toFixed(1)} m au-delà du balisage à ${at.toFixed(0)} m`);
     });
   }
 });
+
+// ---------- L'Avalanche ----------
+
+test("L'Avalanche : neige damée et molle sur le glacier, gravier, eau au gué, gravier sur la piste forestière, pavés au village", () => {
+  const t = tracks.avalanche;
+  const at = (s, u = 0) => { const f = t.sample(s); return t.surfaceAt(f.x + u * f.rx, f.z + u * f.rz).name; };
+  const mid = (type) => { const f = t.features.find((f) => f.type === type); return (f.a + f.b) / 2; };
+  assert.equal(at(300), 'neige');
+  assert.equal(at(300, 12), 'neige molle');
+  assert.equal(at(1400 + 30), 'gravier');
+  assert.equal(at(mid('ford')), 'eau');
+  assert.equal(at(mid('road')), 'gravier');
+  assert.equal(at(t.sFinish - 40), 'pavés');
+});
+
+test("L'Avalanche : 40 m de large sur le glacier, la remontée monte vraiment, des marches au village", () => {
+  const t = tracks.avalanche;
+  assert.equal(t.tapeAt(300), 20);
+  assert.ok(t.tapeAt(1400) < 3.5);
+  const climb = t.features.find((f) => f.type === 'climb');
+  let lo = Infinity, hi = -Infinity;
+  for (let s = climb.a; s < climb.b; s += 1) { lo = Math.min(lo, t.trailY(s, 0)); hi = Math.max(hi, t.trailY(s, 0)); }
+  const rise = t.trailY(climb.b - 20, 0) - t.trailY(climb.a + 10, 0);
+  assert.ok(rise > 15, `la remontée monte de ${rise.toFixed(1)} m`);
+  const st = t.features.find((f) => f.type === 'stairs');
+  let riser = 0;
+  for (let s = st.a; s < st.b; s += 0.05) riser = Math.max(riser, t.trailY(s, 0) - t.trailY(s + 0.05, 0));
+  assert.ok(riser > 0.1 && riser < 0.35, `contremarche de ${riser.toFixed(2)} m`);
+});
+
+test("L'Avalanche : les maisons du village sont hors du balisage", () => {
+  const t = tracks.avalanche;
+  assert.ok(t.buildings.length > 15, `${t.buildings.length} maisons`);
+  for (const b of t.buildings) {
+    const c = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+    for (const [a, d] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      // (le repère de la maison : x en travers de la ruelle, z le long)
+      const lx = (a * b.d) / 2, lz = (d * b.w) / 2;
+      const x = b.x + lx * c + lz * sn, z = b.z - lx * sn + lz * c;
+      assert.ok(t.nearest(x, z, null, 0, 4).dist > 4, 'une maison touche la piste');
+    }
+  }
+});
+
+for (const mode of ['ultra', 'normal']) {
+  test(`L'Avalanche, mode ${mode === 'ultra' ? 'Ultra-réaliste' : 'Normal'} : le pilote automatique descend toute la piste sans tomber`, { timeout: 900000 }, () => {
+    const sim = createSim({ map: 'avalanche', mode });
+    let t = 0;
+    while (sim.race.state !== 'arrivee' && t < 700) {
+      sim.step(autopilot(sim));
+      if (sim.bike.crashed && sim.bike.crashed.t > 1) sim.respawn();
+      if (sim.race.out) sim.respawn();
+      t += STEP;
+    }
+    assert.equal(sim.race.state, 'arrivee', `arrêté à ${sim.race.s.toFixed(0)} m sur ${sim.track.length.toFixed(0)}`);
+    assert.equal(sim.race.splits.length, sim.track.gates.length - 1);
+    assert.equal(sim.race.crashes, 0, `${sim.race.crashes} chutes`);
+    console.log(`  pilote auto, L'Avalanche, ${mode} : ${sim.race.time.toFixed(1)} s`);
+  });
+}

@@ -10,6 +10,8 @@ import { autopilot } from './sim/autopilot.js';
 import { Input } from './input.js';
 import { Sound } from './audio.js';
 import { createScene } from './render/scene.js';
+import { loadGroundTextures } from './render/groundTextures.js';
+import { loadMassif } from './render/range.js';
 import { createBikeModel } from './render/bikeModel.js';
 import { createCameraRig, CAMERA_SETTINGS } from './render/cameraRig.js';
 import { createPost, SPEED_FX } from './render/post.js';
@@ -49,6 +51,9 @@ const MODE_KEY = 'downhill.mode';
 const savedMode = (() => { try { return localStorage.getItem(MODE_KEY); } catch { return null; } })();
 let mode = [params.get('mode'), savedMode].find((m) => MODE_IDS.includes(m)) || 'normal';
 
+// Les photos du sol se chargent pendant qu'on construit la piste.
+const groundTextures = loadGroundTextures();
+const massif = loadMassif();
 await loading('Démarrage du moteur physique…', 0.05);
 await initPhysics();
 await loading(`Construction de la piste : ${MAPS[mapId].name}…`, 0.15);
@@ -73,9 +78,10 @@ renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.3;
-const world = createScene(sim, { low, renderer });
+// AgX : des hautes lumières qui se fondent comme sur une photo (la neige au soleil ne vire pas au jaune ni au cyan).
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.5;
+const world = createScene(sim, { low, renderer, groundTextures: await groundTextures, massif: await massif });
 await loading('Préparation du vélo…', 0.75);
 const bikeModel = createBikeModel();
 world.scene.add(bikeModel.group);
@@ -85,19 +91,20 @@ world.scene.add(ghost.group);
 await Promise.race([bikeModel.ready, new Promise((r) => setTimeout(r, 8000))]);
 // Le peloton : vingt rivaux pour le départ en ligne (?peloton, touche N), s'il a été enregistré pour cette piste.
 await loading('Le peloton prend place…', 0.85);
-const PELOTON_KEY = 'downhill.peloton';
+// Le choix est retenu par piste ; sans choix, la piste décide (L'Avalanche part en ligne, comme la vraie course).
+const PELOTON_KEY = `downhill.peloton.${mapId}`;
 const pelotonRuns = await loadPeloton(mapId);
 const peloton = pelotonRuns ? createPeloton(world.scene, pelotonRuns) : null;
 const grid = gridSlots(track);
 {
   const saved = (() => { try { return localStorage.getItem(PELOTON_KEY); } catch { return null; } })();
-  pelotonOn = !!peloton && !params.has('depart') && (params.has('peloton') ? params.get('peloton') !== '0' : saved === '1');
+  pelotonOn = !!peloton && !params.has('depart') && (params.has('peloton') ? params.get('peloton') !== '0' : saved !== null ? saved === '1' : !!(track.map.peloton && track.map.peloton.default));
 }
 let goTime = null; // sim.time au GO du départ en ligne
-const camera = new THREE.PerspectiveCamera(CAMERA_SETTINGS.fov, innerWidth / innerHeight, 0.05, 4000);
+const camera = new THREE.PerspectiveCamera(CAMERA_SETTINGS.fov, innerWidth / innerHeight, 0.05, world.viewDistance);
 const rig = createCameraRig(camera, bikeModel, sim);
 if (params.get('cam') === 'chase') rig.setMode('chase');
-const post = createPost(renderer, world.scene, camera, { low });
+const post = createPost(renderer, world.scene, camera, { low, farScene: world.farScene });
 const particles = createSpeedParticles();
 world.scene.add(particles.object);
 post.setSize(innerWidth, innerHeight);
@@ -235,7 +242,7 @@ function updateModeUI() {
     b.disabled = b.dataset.start === 'peloton' && !peloton;
   }
   $('startBlurb').textContent = !peloton ? 'Pas encore de peloton sur cette piste.'
-    : pelotonOn ? `Départ en ligne avec ${peloton.riders.length} rivaux. Le chrono part au GO pour tout le monde ; tu as le dossard ${PLAYER.num}, au quatrième rang. Ils passent au travers de toi.`
+    : pelotonOn ? `Départ en ligne avec ${peloton.riders.length} rivaux. Le chrono part au GO pour tout le monde ; tu as le dossard ${PLAYER.num}, au rang ${Math.floor(PLAYER.slot / ((track.map.peloton && track.map.peloton.cols) || 3)) + 1} de la grille. Ils passent au travers de toi.`
       : 'Seul contre le chrono, départ dans la cabane.';
   $('rank').classList.toggle('hidden', !pelotonOn);
 }
@@ -405,7 +412,7 @@ function onFinish() {
     const ref = prev && prev.splits ? prev.splits[i] : null;
     rows.push([i === race.splits.length - 1 ? 'Arrivée' : `Intermédiaire ${i + 1}`, `${fmt(t)}${ref != null ? `  (${fmtDelta(t - ref)})` : ''}`]);
   });
-  rows.push(['Radar avant le saut final', race.trapSpeed != null ? `${(race.trapSpeed * 3.6).toFixed(1)} km/h` : '–']);
+  rows.push(['Radar', race.trapSpeed != null ? `${(race.trapSpeed * 3.6).toFixed(1)} km/h` : '–']);
   rows.push(['Vitesse max', `${(race.topSpeed * 3.6).toFixed(1)} km/h`]);
   rows.push(['Chutes et sorties', String(race.crashes)]);
   const tricks = sim.tricks.landed;

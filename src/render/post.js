@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
@@ -58,7 +58,7 @@ const GradeShader = {
       col /= float(N);
       // Étalonnage : un peu plus de saturation et de contraste, ombres légèrement froides, hautes lumières chaudes.
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      col = mix(vec3(l), col, 1.1 - 0.35 * uSpeed * uTunnel * edge);
+      col = mix(vec3(l), col, 1.16 - 0.35 * uSpeed * uTunnel * edge);
       col *= mix(vec3(0.96, 0.99, 1.05), vec3(1.05, 1.0, 0.94), smoothstep(0.05, 0.8, l));
       // Vignette, qui se resserre avec la vitesse (vision en tunnel).
       float v = uVignette + 0.28 * uSpeed * uTunnel;
@@ -67,11 +67,39 @@ const GradeShader = {
     }`,
 };
 
-export function createPost(renderer, scene, camera, { low = false } = {}) {
+// Le rendu de la scène en deux temps : d'abord le lointain (le ciel, les massifs), avec sa propre caméra (même point de
+// vue, mais une profondeur qui va de 20 m à 60 km), puis, la profondeur effacée, la scène proche par-dessus. Chaque
+// partie garde ainsi une précision de profondeur à son échelle.
+class LayeredRenderPass extends Pass {
+  constructor(scene, camera, farScene) {
+    super();
+    this.scene = scene; this.camera = camera; this.farScene = farScene;
+    this.farCamera = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 20, 60000);
+    this.needsSwap = false;
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    const auto = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
+    renderer.clear();
+    if (this.farScene) {
+      const c = this.camera, f = this.farCamera;
+      c.updateMatrixWorld();
+      c.matrixWorld.decompose(f.position, f.quaternion, f.scale);
+      if (f.fov !== c.fov || f.aspect !== c.aspect) { f.fov = c.fov; f.aspect = c.aspect; f.updateProjectionMatrix(); }
+      renderer.render(this.farScene, f);
+      renderer.clearDepth();
+    }
+    renderer.render(this.scene, this.camera);
+    renderer.autoClear = auto;
+  }
+}
+
+export function createPost(renderer, scene, camera, { low = false, farScene = null } = {}) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: low ? 0 : 4 });
   const composer = new EffectComposer(renderer, target);
-  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new LayeredRenderPass(scene, camera, farScene));
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   composer.addPass(new OutputPass());

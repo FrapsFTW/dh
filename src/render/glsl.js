@@ -28,6 +28,20 @@ float dh_cells(vec2 p) {
   }
   return d;
 }
+// Des pierres jointives (pavés) : x, la distance au bord de la pierre (0 dans le joint) ; y, un nombre propre à chaque
+// pierre (sa teinte) ; z, la distance à son centre.
+vec3 dh_stones(vec2 p) {
+  p += 0.35 * vec2(dh_noise(p * 0.7), dh_noise(p * 0.7 + 5.2)); // (des rangées qui ondulent, pas une grille)
+  vec2 i = floor(p), f = fract(p);
+  float d1 = 8.0, d2 = 8.0, id = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 g = vec2(float(x), float(y));
+    vec2 o = 0.05 + 0.9 * vec2(dh_hash(i + g), dh_hash(i + g + 31.7));
+    float d = length(g + o - f);
+    if (d < d1) { d2 = d1; d1 = d; id = dh_hash(i + g + 7.3); } else if (d < d2) d2 = d;
+  }
+  return vec3(d2 - d1, id, d1);
+}
 `;
 
 // Normale bosselée à partir d'une hauteur calculée dans le shader (comme bumpMap, sans texture).

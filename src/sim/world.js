@@ -41,6 +41,14 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
     );
     treeHandles.add(c.handle);
   }
+  // Les maisons du village : comme un arbre, on s'y arrête net.
+  for (const b of track.buildings) {
+    const c = world.createCollider(
+      RAPIER.ColliderDesc.cuboid(b.d / 2, b.h / 2, b.w / 2).setTranslation(b.x, b.y + b.h / 2, b.z)
+        .setRotation({ x: 0, y: Math.sin(b.yaw / 2), z: 0, w: Math.cos(b.yaw / 2) }).setCollisionGroups(GROUPS.trees),
+    );
+    treeHandles.add(c.handle);
+  }
 
   const bike = new Bike(world, track, params);
   const race = new Race(track);

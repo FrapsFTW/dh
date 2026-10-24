@@ -24,6 +24,10 @@ export const SURFACES = {
   herbe: { name: 'herbe', grip: 0.75, crr: 0.07 },
   gravier: { name: 'gravier', grip: 0.86, crr: 0.03 }, // la piste au-dessus des arbres : terre et graviers roulants
   roche: { name: 'roche', grip: 1.0, crr: 0.012 }, // une dalle de granit, sèche
+  neige: { name: 'neige', grip: 0.72, crr: 0.02 }, // la trace damée du glacier : ça glisse, mais ça file
+  neigeMolle: { name: 'neige molle', grip: 0.62, crr: 0.06 }, // à côté de la trace : on s'enfonce et on ralentit
+  paves: { name: 'pavés', grip: 0.82, crr: 0.016 },
+  eau: { name: 'eau', grip: 0.72, crr: 0.16 }, // le gué : quelques mètres dans le torrent
 };
 
 /** mapId : une des cartes de maps.js ('foret' par défaut). */
@@ -128,7 +132,10 @@ export function createTrack(seed = 7, mapId = 'foret') {
     const w = smoothstep(arena.a, arena.a + 18, s);
     C[i] = C[i] * (1 - w) + (C[iArena] - 0.04 * (s - arena.a)) * w; // presque plat, juste de quoi rouler
   }
-  for (let i = 1; i < n; i++) C[i] = Math.min(C[i], C[i - 1] - 0.015 * DS);
+  // (sauf dans une remontée : là, la piste monte vraiment avec le relief)
+  const climbs = featureOf('climb');
+  const inClimb = (s) => climbs.some((f) => s > f.a && s < f.b);
+  for (let i = 1; i < n; i++) if (!inClimb(i * DS)) C[i] = Math.min(C[i], C[i - 1] - 0.015 * DS);
   // Écart entre la piste et le relief naturel : on le reporte sur les côtés pour que la pente suive la piste.
   const D = new Float32Array(n);
   for (let i = 0; i < n; i++) D[i] = C[i] - natural(X[i], Z[i]);
@@ -292,6 +299,10 @@ export function createTrack(seed = 7, mapId = 'foret') {
       else if (f.type === 'rollers') h += f.height * Math.sin((Math.PI * d) / f.wave) ** 2 * smoothstep(0, 4, d) * (1 - smoothstep(f.b - f.a - 4, f.b - f.a, d));
       else if (f.type === 'brakeBumps') h += 0.035 * Math.sin((2 * Math.PI * d) / 0.95) ** 2 * smoothstep(0, 3, d) * (1 - smoothstep(f.b - f.a - 2, f.b - f.a, d));
       else if (f.type === 'startRamp') h += f.height * (1 - smoothstep(f.b - 9, f.b, s));
+      // Les marches : des paliers à plat (à la hauteur du début de chaque marche), une contremarche tous les f.step m.
+      else if (f.type === 'stairs') h += baseAt(f.a + f.step * Math.floor(d / f.step)) - baseAt(s);
+      // Le gué : la piste plonge dans le lit du torrent.
+      else if (f.type === 'ford') h -= f.depth * Math.sin((Math.PI * d) / (f.b - f.a)) ** 2;
     }
     // Les modules s'effacent sur les côtés en pente douce, pour ne pas faire de mur si on passe au bord.
     h *= 1 - smoothstep(TRAIL_HALF + 0.2, TRAIL_HALF + 2.2, au);
@@ -341,14 +352,37 @@ export function createTrack(seed = 7, mapId = 'foret') {
   const zones = [
     ...bridges.map((f) => ({ a: f.a, b: f.b, surface: SURFACES.bois, whole: true })),
     ...featureOf('slab').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.roche, whole: true })),
-    ...(layout.surfaces || []).map((z) => ({ a: z.a, b: z.b, surface: SURFACES[z.surface], edge: z.edge && SURFACES[z.edge] })),
+    ...featureOf('ford').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.eau, whole: true })),
+    ...featureOf('road').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.gravier, whole: true })),
+    ...(layout.surfaces || []).map((z) => ({ a: z.a, b: z.b, surface: SURFACES[z.surface], edge: z.edge && SURFACES[z.edge], off: z.off && SURFACES[z.off] })),
   ];
   const zoneAt = (s) => zones.find((z) => s >= z.a && s <= z.b) || null;
 
+  // La largeur balisée : la rubalise à TAPE_U, sauf sur les tronçons larges (le glacier), balisés de piquets plus loin.
+  const wides = layout.wide || [];
+  /** La demi-largeur balisée à la distance s. */
+  function tapeAt(s) {
+    let t = TAPE_U;
+    for (const w of wides) {
+      if (s < w.a || s > w.b) continue;
+      const k = smoothstep(w.a, w.a + (w.open ?? 10), s) * (1 - smoothstep(w.b - (w.close ?? 10), w.b, s));
+      t = Math.max(t, TAPE_U + (w.half - TAPE_U) * k);
+    }
+    return t;
+  }
+  // Sur un tronçon large, la trace damée fait plus que la piste habituelle.
+  const traceAt = (s) => Math.max(TRAIL_HALF - 0.3, Math.min(5, tapeAt(s) - 3));
+  /** La vitesse que s'autorise le pilote auto à la distance s (13 m/s, sauf là où la carte lâche les freins). */
+  const vmaxAt = (s) => { for (const f of layout.fast || []) if (s >= f.a && s <= f.b) return f.vmax; return 13; };
+
   function surfaceAt(x, z) {
-    const p = nearest(x, z, null, 0, 1);
-    if (!p.inside || p.dist > TRAIL_HALF + 0.9) return SURFACES.herbe;
+    const p = nearest(x, z, null, 0, wides.length ? 4 : 1);
     const s = p.s;
+    if (!p.inside || p.dist > TRAIL_HALF + 0.9) {
+      // À côté de la piste : l'herbe, ou ce qui couvre tout le tronçon (la neige du glacier).
+      const zone = Number.isFinite(p.dist) ? zoneAt(s) : null;
+      return zone && zone.off && p.dist < tapeAt(s) + 6 ? (p.dist < traceAt(s) ? zone.surface : zone.off) : SURFACES.herbe;
+    }
     if (s < sStart - 0.5 && s > cpS[0]) return SURFACES.bois;
     if (inRocks(s) && p.dist < TRAIL_HALF + 0.3) return SURFACES.cailloux;
     for (const r of roots) {
@@ -357,13 +391,14 @@ export function createTrack(seed = 7, mapId = 'foret') {
     }
     const zone = zoneAt(s);
     if (zone && zone.whole) return zone.surface;
+    if (zone && zone.off) return p.dist < traceAt(s) ? zone.surface : zone.edge || zone.surface;
     if (p.dist > TRAIL_HALF - 0.3) return zone ? zone.edge || zone.surface : SURFACES.poussiere; // les bords de la trace, plus meubles
     return zone ? zone.surface : SURFACES.terre;
   }
 
   // ---------- Les points où l'on repart après une chute ----------
   // Les portes, plus un point tous les 150 m environ, jamais sur un saut, dans un pierrier ou sur un pont.
-  const busy = (s) => features.some((f) => (f.type === 'jump' || f.type === 'rocks' || f.type === 'bridge' || f.type === 'slab') && s > f.a - 6 && s < f.b + 2);
+  const busy = (s) => features.some((f) => ['jump', 'rocks', 'bridge', 'slab', 'stairs', 'ford'].includes(f.type) && s > f.a - 6 && s < f.b + 2);
   const respawns = gates.slice(0, -1).map((g) => g.s);
   for (let s = sStart + 150; s < sFinish - 60; s += 150) {
     let p = s;
@@ -381,6 +416,73 @@ export function createTrack(seed = 7, mapId = 'foret') {
   const arenaCenter = sample((arena.a + L) / 2);
   const startCenter = sample(cpS[0] + 6);
 
+  // La distance au tracé, approchée (à 3 m près) sur une grille de 6 m, jusqu'à 120 m : pour la bande de relief détaillé
+  // des longues pistes, et tout ce qui doit savoir si on est près de la piste sans chercher le point le plus proche.
+  const DCELL = 6, DMAX = 120;
+  const dnx = Math.ceil((bounds.xmax - bounds.xmin + 2 * DMAX) / DCELL) + 1, dnz = Math.ceil((bounds.zmax - bounds.zmin + 2 * DMAX) / DCELL) + 1;
+  const dist = new Float32Array(dnx * dnz).fill(Infinity), distS = new Float32Array(dnx * dnz);
+  for (let i = 0; i < n; i += 8) {
+    const ci = Math.round((X[i] - bounds.xmin + DMAX) / DCELL), cj = Math.round((Z[i] - bounds.zmin + DMAX) / DCELL), R = Math.ceil(DMAX / DCELL);
+    for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
+      const a = ci + di, b = cj + dj;
+      if (a < 0 || b < 0 || a >= dnx || b >= dnz) continue;
+      const d = Math.hypot(bounds.xmin - DMAX + a * DCELL - X[i], bounds.zmin - DMAX + b * DCELL - Z[i]);
+      if (d < dist[b * dnx + a]) { dist[b * dnx + a] = d; distS[b * dnx + a] = i * DS; }
+    }
+  }
+  /** La distance approchée au tracé (Infinity au-delà de 120 m). */
+  function trailDist(x, z) {
+    const fx = (x - bounds.xmin + DMAX) / DCELL, fz = (z - bounds.zmin + DMAX) / DCELL;
+    const i = Math.floor(fx), j = Math.floor(fz);
+    if (i < 0 || j < 0 || i >= dnx - 1 || j >= dnz - 1) return Infinity;
+    const tx = fx - i, tz = fz - j, a = dist[j * dnx + i], b = dist[j * dnx + i + 1], c = dist[(j + 1) * dnx + i], d = dist[(j + 1) * dnx + i + 1];
+    if (!Number.isFinite(a + b + c + d)) return Math.min(a, b, c, d) + DCELL;
+    return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+  }
+  /** La distance le long de la piste du point de piste le plus proche, approchée (à la même échelle). */
+  function trailS(x, z) {
+    const i = Math.round((x - bounds.xmin + DMAX) / DCELL), j = Math.round((z - bounds.zmin + DMAX) / DCELL);
+    return i < 0 || j < 0 || i >= dnx || j >= dnz ? 0 : distS[j * dnx + i];
+  }
+  const FAR = { s: 0, u: 0, dist: Infinity, inside: false }; // « loin de la piste », sans chercher
+  // Une longue piste n'a de relief détaillé (et d'arbres, de décor) que dans une bande autour d'elle.
+  const band = map.band ?? null;
+  /** Un point au hasard : dans le rectangle de la piste, ou dans sa bande. */
+  const randomPoint = () => {
+    if (band === null) return [bounds.xmin + rand() * (bounds.xmax - bounds.xmin), bounds.zmin + rand() * (bounds.zmax - bounds.zmin)];
+    const f = sample(rand() * L), u = (rand() * 2 - 1) * band;
+    return [f.x + u * f.rx, f.z + u * f.rz];
+  };
+
+  // ---------- Le village : des maisons de pierre de part et d'autre de la ruelle ----------
+  const buildings = [];
+  if (layout.village) {
+    const V = layout.village;
+    for (const side of [-1, 1]) {
+      for (let s = V.a + rand() * 3; s < V.b; ) {
+        const w = 6 + rand() * 4, d = 7 + rand() * 2.5, h = 5.2 + rand() * 3, set = 5.2 + rand() * 1.8;
+        const sc = s + w / 2;
+        // Pas sur la place de l'arrivée (seulement autour, plus loin), ni trop près de la ruelle dans un virage.
+        const onSquare = sc > arena.a + 6;
+        const u0 = onSquare ? 15 + rand() * 4 : set;
+        const f = sample(sc);
+        const cx = f.x + side * (u0 + d / 2) * f.rx, cz = f.z + side * (u0 + d / 2) * f.rz;
+        const yaw = Math.atan2(-f.tx, -f.tz);
+        // Les coins ne doivent pas toucher la piste.
+        let ok = true, ymin = Infinity;
+        for (const [a, b] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]]) {
+          const x = cx + a * f.tx + b * side * f.rx, z = cz + a * f.tz + b * side * f.rz;
+          const q = nearest(x, z, sc, 40);
+          if (q.dist < TAPE_U + 1.2) ok = false;
+          ymin = Math.min(ymin, natural(x, z) + D[Math.floor(q.s / DS)] * (1 - smoothstep(4, 26, q.dist)));
+        }
+        if (ok && rand() > 0.12) buildings.push({ x: cx, z: cz, y: ymin - 0.6, w, d, h: h + 0.6, yaw, side, roof: rand(), hue: rand() });
+        s += w + 0.6 + rand() * 3.5;
+      }
+    }
+  }
+  const nearBuilding = (x, z, m) => buildings.some((b) => Math.hypot(x - b.x, z - b.z) < Math.max(b.w, b.d) / 2 + m);
+
   const trees = [];
   const treeline = map.trees.treeline ?? null;
   // Plus haut, rien que des sapins ; en bas des montagnes, plus de feuillus.
@@ -388,9 +490,9 @@ export function createTrack(seed = 7, mapId = 'foret') {
   const TREE_CELL = 4;
   const treeGrid = new Map();
   for (let k = 0; k < map.trees.tries; k++) {
-    const x = bounds.xmin + rand() * (bounds.xmax - bounds.xmin);
-    const z = bounds.zmin + rand() * (bounds.zmax - bounds.zmin);
-    const p = nearest(x, z, null, 0, 5);
+    const [x, z] = randomPoint();
+    if (buildings.length && nearBuilding(x, z, 3)) continue;
+    const p = band !== null && trailDist(x, z) > 48 ? FAR : nearest(x, z, null, 0, 5);
     const d = p.dist;
     // La forêt est dense, sauf autour du départ et dans l'aire d'arrivée ; les clairières viennent du bruit.
     const clearing = smoothstep(0.62, 0.75, vnoise(x / 40, z / 40, seed + 21));
@@ -442,6 +544,7 @@ export function createTrack(seed = 7, mapId = 'foret') {
 
   // ---------- Les maillages (partagés par l'affichage et la physique) ----------
   function buildTerrain() {
+    if (band !== null) return buildBandTerrain();
     const nx = Math.ceil((bounds.xmax - bounds.xmin) / TERRAIN_STEP) + 1;
     const nz = Math.ceil((bounds.zmax - bounds.zmin) / TERRAIN_STEP) + 1;
     const positions = new Float32Array(nx * nz * 3);
@@ -463,6 +566,45 @@ export function createTrack(seed = 7, mapId = 'foret') {
       indices[k++] = b; indices[k++] = c; indices[k++] = d;
     }
     return { positions, indices, trail, nx, nz };
+  }
+
+  // La même grille, mais seulement à moins de `band` mètres de la piste. Renvoie aussi les arêtes du bord (paires de
+  // sommets), pour la jupe qui cache la marche avec le relief lointain.
+  function buildBandTerrain() {
+    const nx = Math.ceil((bounds.xmax - bounds.xmin) / TERRAIN_STEP) + 1;
+    const nz = Math.ceil((bounds.zmax - bounds.zmin) / TERRAIN_STEP) + 1;
+    const id = new Int32Array(nx * nz).fill(-1);
+    const pos = [], trailW = [], sOf = [], dOf = [];
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const x = bounds.xmin + i * TERRAIN_STEP, z = bounds.zmin + j * TERRAIN_STEP;
+      const td = trailDist(x, z);
+      if (td > band + TERRAIN_STEP * 2) continue;
+      const p = td < 40 ? nearest(x, z, null, 0, 4) : FAR;
+      let y = terrainHeight(x, z, p.dist < 30 && Number.isFinite(p.dist) ? sample(p.s).d : 0, p.dist);
+      // Sur un tronçon large, on roule aussi à côté de la piste fine : le relief l'épouse (juste dessous), sans marche
+      // à son bord. Ailleurs, il passe 25 cm dessous (les modules de la piste sont plus fins que sa grille).
+      if (p.inside && p.dist < RIBBON_HALF && tapeAt(p.s) > 5) y = trailY(p.s, clamp(p.u, -RIBBON_HALF, RIBBON_HALF)) - 0.06 * (1 - smoothstep(4.6, RIBBON_HALF, p.dist));
+      else if (p.dist < RIBBON_HALF - 0.6 && p.inside) y = Math.min(y, trailY(p.s, clamp(p.u, -RIBBON_HALF, RIBBON_HALF)) - 0.25);
+      id[j * nx + i] = pos.length / 3;
+      pos.push(x, y, z);
+      trailW.push(Number.isFinite(p.dist) ? 1 - smoothstep(3, 9, p.dist) : 0);
+      // (pour l'affichage : où l'on est le long de la piste, et à quelle distance)
+      if (Number.isFinite(p.dist)) { sOf.push(p.s); dOf.push(p.dist); } else { sOf.push(trailS(x, z)); dOf.push(trailDist(x, z)); }
+    }
+    const quad = (i, j) => i >= 0 && j >= 0 && i < nx - 1 && j < nz - 1 && id[j * nx + i] >= 0 && id[j * nx + i + 1] >= 0 && id[(j + 1) * nx + i] >= 0 && id[(j + 1) * nx + i + 1] >= 0
+      && trailDist(bounds.xmin + (i + 0.5) * TERRAIN_STEP, bounds.zmin + (j + 0.5) * TERRAIN_STEP) < band;
+    const indices = [], edges = [];
+    for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      if (!quad(i, j)) continue;
+      const a = id[j * nx + i], b = id[j * nx + i + 1], c = id[(j + 1) * nx + i], d = id[(j + 1) * nx + i + 1];
+      indices.push(a, c, b, b, c, d);
+      // Un côté sans voisin est un bord.
+      if (!quad(i, j - 1)) edges.push(a, b);
+      if (!quad(i, j + 1)) edges.push(c, d);
+      if (!quad(i - 1, j)) edges.push(a, c);
+      if (!quad(i + 1, j)) edges.push(b, d);
+    }
+    return { positions: Float32Array.from(pos), indices: Uint32Array.from(indices), trail: Float32Array.from(trailW), edges: Uint32Array.from(edges), sOf: Float32Array.from(sOf), dOf: Float32Array.from(dOf), nx, nz, band: true };
   }
 
   function buildRibbon() {
@@ -490,10 +632,10 @@ export function createTrack(seed = 7, mapId = 'foret') {
   }
 
   return {
-    seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
-    natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight,
+    seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null, peloton: map.peloton || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
+    natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight, tapeAt, vmaxAt, trailDist, trailS, band,
     features, roots, rocks, bridges, onBridge, gates, respawns, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
-    bounds, trees, treeNear, buildTerrain, buildRibbon,
+    bounds, trees, treeNear, buildings, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
   };
 }
 

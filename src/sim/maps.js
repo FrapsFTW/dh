@@ -72,7 +72,8 @@ const foret = {
     };
   },
   trees: { tries: 26000 },
-  env: { treeline: null, mountains: 1 },
+  // L'air de la forêt est humide : une brume assez dense. Autour, des collines boisées.
+  env: { treeline: null, haze: 3.2e-4, hazeHeight: 700, far: { radius: 700, step: 12 }, range: { height: 520, top: 140, ramp: 700, scale: 0.3 } },
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -219,8 +220,170 @@ const alpes = {
   trees: { tries: 70000, treeline: 275 },
   // Le décor : la limite des arbres et la neige (altitudes), le massif autour (1,7 fois celui de la forêt), un air
   // plus limpide, et le relief lointain jusqu'à 1 350 m du milieu de la piste.
-  env: { treeline: 275, snowline: 640, mountains: 1.7, fog: 0.0004, far: { radius: 1350, step: 14 } },
+  env: { treeline: 275, snowline: 640, haze: 9e-5, hazeHeight: 1300, far: { radius: 1350, step: 14 }, range: { height: 2100, top: 260, ramp: 1800, scale: 0.75 } },
 };
 
-export const MAPS = { foret, alpes };
+// ---------------------------------------------------------------------------------------------------------------
+// L'Avalanche : toute la montagne, du glacier au village, inspirée de la Megavalanche de l'Alpe d'Huez.
+//   Le glacier (départ en ligne, 40 m de large, balisé de piquets) · l'entonnoir de la moraine · les pierriers ·
+//   le balcon dans l'alpage, sa remontée et le gué · les lacets jusqu'à la forêt · le bois et le bike park ·
+//   la ruelle du village et l'arrivée sur la place.
+// ---------------------------------------------------------------------------------------------------------------
+const AV = {
+  // la cabane (pour le contre-la-montre), puis le glacier : une grande courbe à droite, une à gauche
+  glacier: [[0, 74], [0, 58], [0, 20], [2, -60], [10, -140], [30, -220], [58, -300], [72, -380], [66, -460], [44, -540], [18, -610], [0, -680], [-12, -740]],
+  // l'entonnoir : la neige s'arrête, le couloir se resserre entre les moraines
+  entonnoir: [[-20, -800], [-34, -860], [-40, -930], [-30, -1000], [-38, -1060], [-62, -1110]],
+  // les pierriers, la dalle, le drop du Pic
+  pierriers: [[-90, -1160], [-110, -1220], [-112, -1290], [-96, -1350], [-100, -1420], [-124, -1480], [-140, -1550], [-132, -1620]],
+  // le balcon : à flanc vers l'est, la remontée en biais dans la pente, le gué, puis la descente vers les lacets
+  balcon: [[-110, -1670], [-60, -1700], [0, -1720], [70, -1740], [140, -1760], [200, -1772], [262, -1756], [312, -1730], [352, -1708],
+    [400, -1716], [450, -1736], [510, -1766], [566, -1800], [608, -1824], [636, -1846], [644, -1866]],
+  // les lacets : six épingles dans la face, on entre dans les mélèzes à mi-hauteur
+  lacets: [[628, -1880], [604, -1886], [590, -1900], [602, -1912], [628, -1916], [660, -1924], [690, -1936],
+    [714, -1948], [720, -1964], [708, -1976], [682, -1980], [650, -1988], [620, -2000],
+    [596, -2012], [590, -2028], [602, -2040], [628, -2044], [660, -2052], [690, -2064],
+    [714, -2076], [720, -2092], [708, -2104], [682, -2108], [650, -2116], [620, -2128],
+    [596, -2140], [590, -2156], [602, -2168], [628, -2172], [664, -2184], [700, -2200]],
+  // le bois : le single des racines, la première piste forestière, le bike park, le road gap
+  bois: [[730, -2240], [740, -2300], [724, -2360], [696, -2410], [690, -2470], [706, -2530], [730, -2590], [736, -2650], [716, -2700],
+    [686, -2740], [650, -2770], [620, -2810], [616, -2860], [640, -2900], [670, -2930], [676, -2970], [650, -3000], [616, -3020],
+    [596, -3060], [610, -3100], [640, -3130], [660, -3170], [656, -3220], [636, -3260], [610, -3290]],
+  // le village : la ruelle, les marches, la place
+  village: [[590, -3320], [576, -3360], [570, -3400], [572, -3440], [580, -3480], [586, -3520], [588, -3560]],
+};
+const AV_CONTROL = Object.values(AV).flat();
+/** L'indice du premier point de chaque tronçon dans AV_CONTROL. */
+const AVI = (() => { const o = {}; let i = 0; for (const [k, v] of Object.entries(AV)) { o[k] = i; i += v.length; } return o; })();
+// Le torrent : il descend de l'alpage, passe à gué sous le balcon et file vers l'ouest, loin des lacets et du bois.
+const AV_CREEK = [[470, -1430], [462, -1540], [454, -1650], [450, -1736], [432, -1820], [402, -1950], [362, -2100], [300, -2300], [250, -2500], [200, -2800], [160, -3200]];
+// L'axe du glacier, pour sa cuvette.
+const AV_GLACIER = [...AV.glacier.slice(1), ...AV.entonnoir.slice(0, 3)];
+const AV_COARSE = AV_CONTROL.filter((_, i) => i % 3 === 0);
+
+const avalanche = {
+  id: 'avalanche',
+  name: "L'Avalanche",
+  blurb: "5,3 km, plus de 1 000 m de dénivelé, environ 7 minutes. Départ en ligne sur le glacier, l'entonnoir, les pierriers, le balcon et sa remontée, six épingles, le bois et son bike park, la ruelle du village.",
+  control: AV_CONTROL,
+  creek: AV_CREEK,
+  // Le relief n'est construit qu'à 60 m autour de la piste (au-delà, le relief lointain) : 5 km de piste, sinon c'est
+  // un rectangle de 4 km sur 1 qu'il faudrait mailler.
+  band: 60,
+  relief(seed) {
+    const S = (a, b, z) => smoothstep(a, b, z);
+    // La pente de la montagne selon l'altitude : le sommet, le glacier (27 %), l'entonnoir (23 %), les pierriers (27 %),
+    // la face du balcon (33 %), la face des lacets (45 %), la forêt (31 %), le village (16 %), le fond de vallée.
+    const slope = (z) => 0.04 + 0.12 * S(-3500, -3460, z) + 0.15 * S(-3310, -3270, z) + 0.14 * S(-2220, -2180, z)
+      - 0.12 * S(-1880, -1840, z) - 0.06 * S(-1680, -1640, z) - 0.04 * S(-1140, -1100, z) + 0.04 * S(-740, -700, z)
+      + 0.18 * S(80, 120, z);
+    const Z0 = -4600, Z1 = 2800;
+    const table = new Float32Array(Z1 - Z0 + 1);
+    for (let i = 1; i < table.length; i++) table[i] = table[i - 1] + slope(Z0 + i - 0.5);
+    const profile = (z) => {
+      const f = Math.max(0, Math.min(table.length - 1.001, z - Z0)), i = Math.floor(f);
+      return table[i] + (table[i + 1] - table[i]) * (f - i);
+    };
+    // La distance à la piste (grossière) varie lentement : une grille de 25 m suffit, et coûte bien moins cher.
+    const GX0 = -2600, GZ0 = -4800, GS = 25, gnx = 260, gnz = 320;
+    const farGrid = new Float32Array(gnx * gnz);
+    for (let j = 0; j < gnz; j++) for (let i = 0; i < gnx; i++) farGrid[j * gnx + i] = distToPolyline(AV_COARSE, GX0 + i * GS, GZ0 + j * GS);
+    const coarseDist = (x, z) => {
+      const fx = Math.max(0, Math.min(gnx - 1.001, (x - GX0) / GS)), fz = Math.max(0, Math.min(gnz - 1.001, (z - GZ0) / GS));
+      const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
+      const a = farGrid[j * gnx + i], b = farGrid[j * gnx + i + 1], c = farGrid[(j + 1) * gnx + i], d = farGrid[(j + 1) * gnx + i + 1];
+      return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+    };
+    return (x, z) => {
+      // Le glacier : une cuvette lisse entre deux bords qui remontent ; plus bas, les moraines en bourrelets.
+      const dg = z > -1250 ? distToPolyline(AV_GLACIER, x, z) : 1e4;
+      const onGlacier = S(-800, -720, z);
+      const trough = 0.0028 * dg * dg / (1 + (dg / 85) ** 2) * S(-1000, -850, z);
+      const moraine = 3.2 * Math.exp(-(((dg - 30) / 9) ** 2)) * S(-1160, -1080, z) * (1 - S(-760, -700, z));
+      const smooth = 1 - 0.8 * onGlacier * (1 - smoothstep(70, 130, dg));
+      // Loin de la piste, de grands reliefs : la montagne autour, pas un plan incliné.
+      const far = smoothstep(90, 650, coarseDist(x, z));
+      const alpine = S(-2300, -2150, z);
+      const creek = x > 140 && x < 490 && z < -1410 && z > -3220 ? distToPolyline(AV_CREEK, x, z) : 1e4;
+      const gully = creek < 8 ? 2.2 * (1 - smoothstep(1.2, 6.5, creek)) * S(-1560, -1600, z) * (1 - 0.75 * Math.exp(-(((z + 1736) / 30) ** 2))) : 0;
+      // Le village : des terrasses plus douces autour de la place.
+      return profile(z) + trough + moraine
+        + smooth * (5.0 * fbm(x / 90, z / 90, 4, seed) + 0.8 * fbm(x / 14, z / 14, 2, seed + 5) + 1.4 * alpine * fbm(x / 26, z / 26, 2, seed + 11))
+        + 0.6 * onGlacier * fbm(x / 40, z / 40, 2, seed + 17)
+        + far * 110 * fbm(x / 560, z / 560, 4, seed + 31) - gully;
+    };
+  },
+  layout({ cpS, seg, L }) {
+    const g = (k, i) => cpS[AVI[k] + i];
+    const sg = (k, i, f) => seg(AVI[k] + i, AVI[k] + i + 1, f);
+    const sStart = cpS[1] + 1;
+    const sFinish = g('village', 5) - 6;
+    const sVillage = g('village', 0) - 6;
+    return {
+      sStart,
+      sFinish,
+      spawnS: cpS[0] + 3,
+      speedTrap: g('glacier', 9), // le radar, au bas du glacier : la vitesse de pointe
+      features: [
+        { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
+        // ----- Le glacier -----
+        { type: 'rollers', name: 'le replat bosselé', a: g('glacier', 10) - 20, b: g('glacier', 11) + 10, height: 0.35, wave: 9 },
+        // ----- L'entonnoir et les pierriers -----
+        { type: 'brakeBumps', a: g('entonnoir', 1) - 16, b: g('entonnoir', 1) + 2 },
+        { type: 'rocks', name: 'premier pierrier', a: sg('entonnoir', 3, 0.3), b: sg('entonnoir', 4, 0.2) },
+        { type: 'rocks', name: 'pierrier des Séracs', a: sg('pierriers', 0, 0.4), b: sg('pierriers', 2, 0.3) },
+        { type: 'slab', name: 'la dalle', a: sg('pierriers', 3, 0.15), b: sg('pierriers', 3, 0.85) },
+        { type: 'rocks', name: 'second pierrier', a: sg('pierriers', 5, 0.1), b: sg('pierriers', 6, 0.5) },
+        { type: 'jump', kind: 'drop', name: 'drop du Pic', a: sg('pierriers', 6, 0.7), lipLen: 3, lipH: 0.4, knuckle: 0.4, clear: 1.2, speed: 8.5, dig: 1.5 },
+        // ----- Le balcon -----
+        { type: 'offCamber', a: sg('balcon', 1, 0.3), b: sg('balcon', 3, 0.6), bank: -0.1 },
+        { type: 'climb', name: 'la remontée', a: g('balcon', 5) - 10, b: g('balcon', 8) + 20 },
+        { type: 'ford', name: 'le gué', a: g('balcon', 10) - 5, b: g('balcon', 10) + 5, depth: 0.25 },
+        { type: 'rollers', a: sg('balcon', 11, 0.2), b: sg('balcon', 12, 0.8), height: 0.45, wave: 8 },
+        { type: 'brakeBumps', a: g('balcon', 14) - 12, b: g('balcon', 14) + 2 },
+        // ----- Le bois -----
+        { type: 'road', name: 'piste forestière', a: sg('bois', 8, 0.5) - 3, b: sg('bois', 8, 0.5) + 3 },
+        { type: 'brakeBumps', a: g('bois', 10) - 12, b: g('bois', 10) + 2 },
+        { type: 'jump', kind: 'table', name: 'table du bike park', a: sg('bois', 16, 0.3), lipLen: 5, lipH: 1.0, knuckle: 4.5, clear: 0.55, speed: 10.5, dig: 1.5, landFlatten: 0.15 },
+        { type: 'jump', kind: 'table', name: 'table', a: sg('bois', 18, 0.4), lipLen: 5, lipH: 1.0, knuckle: 4.5, clear: 0.55, speed: 10.5, dig: 1.5, landFlatten: 0.15 },
+        { type: 'jump', kind: 'gap', name: 'road gap', a: sg('bois', 21, 0.3), lipLen: 6, lipH: 1.1, knuckle: 6, clear: 0.9, touchLen: 5, dip: -1.3, speed: 12, dig: 2, landFlatten: 0.1 },
+        // ----- Le village -----
+        { type: 'stairs', name: 'les marches', a: sg('village', 2, 0.3), b: sg('village', 2, 0.3) + 9, step: 0.9 },
+        { type: 'arena', a: sg('village', 4, 0.6), b: L },
+      ],
+      // Les racines : sous les premiers mélèzes (après la dernière épingle), et le single raide du bois.
+      roots: [[g('lacets', 28) + 4, g('bois', 0) - 4], [g('bois', 1), sg('bois', 5, 0.5)], [g('bois', 9), sg('bois', 10, 0.8)]],
+      surfaces: [
+        // La neige damée sur la trace, molle à côté : tout le glacier, jusqu'à l'entonnoir.
+        { a: sStart, b: g('entonnoir', 0) + 10, surface: 'neige', edge: 'neigeMolle', off: 'neigeMolle' },
+        { a: g('entonnoir', 0) + 10, b: g('balcon', 2), surface: 'gravier', edge: 'gravier' },
+        { a: sVillage, b: L, surface: 'paves', edge: 'paves' },
+      ],
+      // La largeur balisée : 40 m sur le glacier, qui se resserre dans l'entonnoir.
+      wide: [{ a: sStart + 4, b: g('entonnoir', 0) + 150, half: 20, open: 14, close: 150 }],
+      // La vitesse que s'autorise le pilote auto (sur le glacier, on lâche les freins).
+      fast: [{ a: sStart, b: g('glacier', 10), vmax: 21 }],
+      village: { a: sVillage, b: sFinish + 25 },
+      gates: [
+        { kind: 'depart', s: sStart },
+        { kind: 'point', s: g('entonnoir', 1) + 20 },
+        { kind: 'point', s: g('balcon', 0) },
+        { kind: 'point', s: g('balcon', 12) },
+        { kind: 'point', s: g('bois', 1) },
+        { kind: 'point', s: g('bois', 14) },
+        { kind: 'arrivee', s: sFinish },
+      ],
+    };
+  },
+  trees: { tries: 110000, treeline: 500 },
+  // Le décor : la limite des arbres à mi-hauteur des lacets, la neige éternelle au-dessus du glacier (lui a la sienne),
+  // le massif autour, un air limpide, et le relief lointain jusqu'à 4 200 m du milieu (jusqu'au pied du massif : sinon on
+  // verrait le ciel entre les deux, comme un lac).
+  // L'air de haute montagne est limpide : on voit les sommets à 20 km, bleutés.
+  env: { treeline: 500, snowline: 960, haze: 4.5e-5, hazeHeight: 1800, far: { radius: 4200, step: 26 }, range: { height: 2700, top: 450, ramp: 2500 } },
+  // Le départ en ligne : sept de front sur le glacier.
+  peloton: { cols: 7, colGap: 2.6, rowGap: 3.4, offset: 24, default: true },
+};
+
+export const MAPS = { foret, alpes, avalanche };
 export const MAP_IDS = Object.keys(MAPS);

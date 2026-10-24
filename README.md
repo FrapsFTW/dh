@@ -112,6 +112,24 @@ milieu en forêt, un bas très rapide.
 - En bas, l'autoroute : un bike park, la partie la plus rapide, une table, un step-down, un road gap, de grands
   virages relevés, des bosses, et le saut d'arrivée.
 
+**L'Avalanche** (5 km, plus de 1 000 m de dénivelé, environ 7 minutes, cinq intermédiaires). Toute la montagne, du
+glacier au village, inspirée de la Megavalanche de l'Alpe d'Huez (20 km, 2 600 m de dénivelé, départ en ligne sur le
+glacier du Pic Blanc). Le départ en ligne y est choisi par défaut : sept de front sur la neige.
+
+- Le glacier : 40 m de large, balisé de piquets orange, une trace damée au milieu (on file à 80 km/h) et de la neige
+  molle de chaque côté (moins de grip, on ralentit) ; des séracs et des crevasses sur les bords, un radar en bas.
+- L'entonnoir : la neige s'arrête, le couloir se resserre entre les moraines jusqu'à la largeur d'un single.
+- Les pierriers : trois pierriers, la dalle de granit, le drop du Pic.
+- Le balcon : un single à flanc dans l'alpage, une vraie remontée (une vingtaine de mètres, il faut pédaler), le gué
+  du torrent.
+- Les lacets : six épingles dans la face ; les premiers mélèzes à mi-hauteur.
+- Le bois : le single des racines, une piste forestière à traverser, le bike park et ses tables, le road gap.
+- Le village : une ruelle pavée entre les maisons de pierre, une volée de marches, l'arrivée sur la place.
+
+Une piste aussi longue n'a de relief détaillé (avec sa physique), d'arbres et de décor que dans une bande de 60 m
+autour d'elle ; au-delà, le relief lointain. Le glacier, la remontée, le gué, les marches et le village sont des
+modules de la carte (`src/sim/maps.js`), comme les sauts.
+
 ## La physique
 
 Tout est dans `src/sim/bike.js`. Elle reprend l'architecture et les réglages de
@@ -153,22 +171,35 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
 
 ## L'affichage
 
-- `src/render/ground.js` : le sol et la piste, un seul matériau procédural (terre tassée, trace, bords poussiéreux,
-  traces de freinage, herbe, sous-bois, roche ; en altitude, alpage, éboulis, graviers et granit). En montagne, un
-  relief lointain jusqu'à l'horizon, enneigé sur les sommets.
+- `src/render/ground.js` : le sol et la piste, un seul matériau fait de photos de sols (`groundLayers.js` :
+  prairie, alpage, aiguilles, terre, gravier, roche, pierrier, neige, pavés). Le shader choisit le sol d'après la
+  position (forêt, altitude, pente, piste, trace, bords poussiéreux) et mêle les sols selon leur relief : les pierres
+  percent la terre, la terre remplit les creux. Chaque photo est décalée par endroits, le motif ne se répète pas. De
+  loin, une forêt est la masse sombre de ses cimes. Un relief lointain prolonge la carte.
+- `src/render/range.js` : les massifs jusqu'à 20 km (la carte de hauteurs `public/textures/massif.png`, faite par
+  `tools/massif.mjs`), posés sur le relief de la carte. Les ombres que les sommets portent les uns sur les autres et
+  le creux des vallées sont calculés au lancement ; forêt, alpages, éboulis, roche et neige selon l'altitude, la pente
+  et l'exposition. Ils sont dessinés avant la scène proche, avec leur propre profondeur (`post.js`).
+- `src/render/atmosphere.js` et `src/render/sky.js` : l'air. La même fonction donne la couleur du ciel et la brume de
+  l'éloignement, plus dense dans les vallées, bleutée à l'opposé du soleil, lumineuse face à lui : le lointain se fond
+  exactement dans l'horizon. Elle remplace la brume de three.js dans tous les matériaux. Le ciel, avec ses nuages
+  éclairés, sert aussi de lumière d'ambiance (une carte d'environnement prise au lancement).
+- `src/render/rocks.js` : les rochers (blocs taillés par des plans de fracture, photo de roche projetée sur trois
+  plans, lichen ou mousse dessus, pied assombri) et la glace des séracs.
 - `src/render/trees.js` : la forêt. Sapins et feuillus générés par EZ-Tree au lancement, dessinés en instances ;
   le vrai modèle près du pilote, un imposteur (sa photo sur deux plans croisés) au loin, et des milliers
   d'imposteurs sur le relief lointain. En montagne, les arbres s'arrêtent à une altitude, en rapetissant.
-- `src/render/vegetation.js` : herbes, fleurs, fougères, rochers, troncs couchés.
+- `src/render/vegetation.js` : herbes, fleurs, fougères, rochers, troncs couchés. Les touffes ont des bords doux
+  (alpha-to-coverage) et s'allument à contre-jour ; en altitude, l'herbe jaunit.
 - `src/render/post.js` et `src/render/speedFx.js` : la sensation de vitesse, de 25 à 55 km/h : flou radial et
   légère aberration chromatique sur les bords, vision en tunnel, poussière qui file. La caméra vibre à haute vitesse
   (plus dans les cailloux) et le champ de vision s'ouvre ; le vent gronde dans le casque. Tout se règle avec G.
 - `src/render/cameraRig.js` : la vue subjective. La tête amortit les coups que prend le cadre (réceptions, rollers,
   pierriers) et ne suit le vélo que pendant une vraie figure. L'affichage est interpolé entre deux pas de physique
   (`sim.renderState`), pour rester fluide sur un écran à 144 Hz.
-- `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, public, panneaux,
-  le pont et le torrent.
-- `src/render/sky.js` : ciel, nuages, montagnes à l'horizon (en haute montagne : sommets enneigés, couloirs, brume).
+- `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, panneaux, le pont
+  et le torrent ; le public, en quatre postures (bras levé, téléphone tendu…) ; les maisons du village en photos de
+  pierre, de crépi, de lauze et de bois.
 - `src/render/bikeModel.js` et `src/render/rider.js` : le vélo (le modèle 3D fourni) et le pilote articulé, avec sa
   tenue (maillot à motif, casque intégral et masque, genouillères, dossard). Ses hanches suivent le vélo avec un
   ressort (les jambes amortissent), il reste plus droit que le vélo en virage, la tête regarde où il va, pied extérieur
@@ -211,3 +242,9 @@ node tools/film.mjs [plan…]   # tourne des plans du peloton image par image (s
   [MakeHuman](http://www.makehumancommunity.org).
 - Les arbres : [EZ-Tree](https://github.com/dgreenheck/ez-tree) de Daniel Greenheck (MIT), écorces CC0 de TextureCan
   et Poly Haven.
+- Les sols, les rochers et le village : photos CC0 de [Poly Haven](https://polyhaven.com) (leafy_grass,
+  aerial_grass_rock, forest_leaves_04, forest_ground_04, rocky_trail, rock_face_03, gray_rocks, snow_02,
+  cobblestone_05, castle_wall_slates, white_rough_plaster, roof_slates_03, weathered_planks), assemblées par
+  `tools/ground-textures.mjs`.
+- L'érosion de `tools/massif.mjs` (désactivée par défaut, `DROPS=700000`) suit Hans Theobald Beyer, « Implementation
+  of a method for hydraulic erosion » (2015).

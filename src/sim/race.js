@@ -3,9 +3,7 @@
 // de passage, et le chrono continue de tourner. On repart d'une porte ou d'un des points de reprise (tous les 150 m
 // environ) : jamais au-delà d'une porte qu'on n'a pas encore passée.
 
-import { TAPE_U } from './track.js';
-
-const GATE_HALF_WIDTH = 7; // on doit passer à moins de 7 m du centre de la piste
+const GATE_HALF_WIDTH = 7; // on doit passer à moins de 7 m du centre de la piste (plus sur un tronçon large)
 
 export class Race {
   constructor(track) {
@@ -46,15 +44,16 @@ export class Race {
       if (this.trapSpeed === null && prevS < this.track.speedTrap && this.s >= this.track.speedTrap) this.trapSpeed = speed;
     }
     if (crashed || this.state === 'arrivee') return;
-    if (this.state === 'course' && Math.abs(this.u) < TAPE_U + 0.5 && this.s - prevS < 3) this.reached = Math.max(this.reached, this.s);
-    // Le balisage.
-    if (this.state === 'course' && Math.abs(this.u) > TAPE_U + 0.5) this.outside += dt;
+    // Le balisage (la rubalise, ou les piquets d'un tronçon large).
+    const tape = this.track.tapeAt(this.s) + 0.5;
+    if (this.state === 'course' && Math.abs(this.u) < tape && this.s - prevS < 3) this.reached = Math.max(this.reached, this.s);
+    if (this.state === 'course' && Math.abs(this.u) > tape) this.outside += dt;
     else this.outside = Math.max(0, this.outside - dt * 2);
     if (this.outside > this.outTime) this.out = true;
 
     const gate = this.gates[this.next];
     if (!gate || this.s < gate.s) return;
-    if (Math.abs(this.u) > GATE_HALF_WIDTH) {
+    if (Math.abs(this.u) > Math.max(GATE_HALF_WIDTH, this.track.tapeAt(gate.s) + 1)) {
       // Passé à côté de la porte : la course n'est plus valable jusqu'à un retour au dernier point.
       this.missed = true;
       return;

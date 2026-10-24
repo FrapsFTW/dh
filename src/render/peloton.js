@@ -59,7 +59,8 @@ export async function loadPeloton(mapId) {
   const base = import.meta.env ? import.meta.env.BASE_URL : '/';
   const res = await fetch(`${base}peloton/${mapId}.bin`).catch(() => null);
   if (!res || !res.ok) return null;
-  return decodePeloton(new Uint8Array(await res.arrayBuffer()));
+  // (un serveur peut répondre par une page d'accueil au lieu d'une erreur : sans fichier valide, pas de peloton)
+  try { return decodePeloton(new Uint8Array(await res.arrayBuffer())); } catch { return null; }
 }
 
 export function createPeloton(scene, runs) {

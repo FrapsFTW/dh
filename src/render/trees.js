@@ -196,7 +196,8 @@ export function createForest(track, renderer, { low = false } = {}) {
     for (let k = 0; k < (low ? 9000 : 22000); k++) {
       const x = c.x + (rand() * 2 - 1) * R, z = c.z + (rand() * 2 - 1) * R;
       if (Math.hypot(x - c.x, z - c.z) > R) continue;
-      if (x > B.xmin - 4 && x < B.xmax + 4 && z > B.zmin - 4 && z < B.zmax + 4) continue;
+      // (pas là où il y a déjà la vraie forêt : le rectangle de la piste, ou sa bande)
+      if (track.band !== null ? track.trailDist(x, z) < track.band + 4 : x > B.xmin - 4 && x < B.xmax + 4 && z > B.zmin - 4 && z < B.zmax + 4) continue;
       const y = track.natural(x, z) - 1.2;
       const dens = (1 - smoothstep(tl - 30, tl + 5, y)) * smoothstep(0.3, 0.6, fbm(x / 160, z / 160, 3, 5) * 0.5 + 0.75);
       if (rand() > dens * 0.8) continue;

@@ -25,6 +25,7 @@ export function autopilot(sim, opts = {}) {
   const look = track.sample(race.s + Ld);
   if (opts.line) { const u = opts.line(race.s + Ld); look.x += look.rx * u; look.z += look.rz * u; }
   const pace = opts.pace || 1;
+  const rp = Math.min(pace, 1); // dans les cailloux, les racines et les bosses, même les meilleurs ne forcent pas
   const dx = look.x - st.position.x, dz = look.z - st.position.z;
   const err = Math.atan2(fx * dz - fz * dx, fx * dx + fz * dz); // > 0 : le point est à droite
   const curvature = (2 * Math.sin(err)) / Math.max(Math.hypot(dx, dz), 1);
@@ -37,10 +38,12 @@ export function autopilot(sim, opts = {}) {
 
   // Vitesse visée : assez lente pour chaque virage à venir, en tenant compte de la distance pour freiner. Dans une
   // pente raide, la gravité mange une partie du freinage : il faut s'y prendre plus tôt.
-  let vmax = opts.vmax || 13;
+  // (sur le glacier, la carte lui permet d'aller bien plus vite : il regarde alors plus loin pour freiner à temps)
+  let vmax = opts.vmax || track.vmaxAt(race.s);
+  const horizon = v > 14.5 ? 160 : 90;
   const y0 = track.trailY(race.s, 0);
   const decelTo = (d) => (d < 1 ? BRAKE_DECEL : clamp(BRAKE_DECEL + 2 - (G * (y0 - track.trailY(race.s + d, 0))) / d, 0.6, BRAKE_DECEL));
-  for (let d = 0; d < 90; d += 2) {
+  for (let d = 0; d < horizon; d += 2) {
     const f = track.sample(race.s + d);
     const k = Math.abs(f.k);
     const lat = TURN_GRIP * pace + Math.max(0, Math.sign(f.k) * f.bank) * 0.6; // un virage relevé se passe plus vite
@@ -51,18 +54,18 @@ export function autopilot(sim, opts = {}) {
   // y arriver à la bonne vitesse.
   const rough = track.features.some((f) => f.type === 'rocks' && race.s > f.a - 15 && race.s < f.b)
     || track.roots.some((r) => r.s > race.s - 2 && r.s < race.s + 20);
-  if (rough) vmax = Math.min(vmax, 9 * pace);
+  if (rough) vmax = Math.min(vmax, 9 * rp);
   const rollers = track.features.some((f) => f.type === 'rollers' && race.s > f.a - 25 && race.s < f.b);
-  if (rollers) vmax = Math.min(vmax, 8.5 * pace);
+  if (rollers) vmax = Math.min(vmax, 8.5 * rp);
   for (const f of track.features) {
-    const slow = f.type === 'rocks' ? [9 * pace, 15] : f.type === 'rollers' ? [8.5 * pace, 25] : null;
+    const slow = f.type === 'rocks' ? [9 * rp, 15] : f.type === 'rollers' ? [8.5 * rp, 25] : null;
     if (!slow) continue;
     const d = f.a - slow[1] - race.s;
-    if (d > 0 && d < 90) vmax = Math.min(vmax, Math.sqrt(slow[0] ** 2 + 2 * decelTo(d) * d));
+    if (d > 0 && d < horizon) vmax = Math.min(vmax, Math.sqrt(slow[0] ** 2 + 2 * decelTo(d) * d));
   }
   // Avant un saut, juste la bonne vitesse (et, de plus loin, de quoi freiner jusqu'à elle).
   for (const f of track.features) {
-    if (!f.speed || f.a - 40 <= race.s || f.a - 40 > race.s + 90) continue;
+    if (!f.speed || f.a - 40 <= race.s || f.a - 40 > race.s + horizon) continue;
     const d = f.a - 40 - race.s;
     vmax = Math.min(vmax, Math.sqrt(f.speed ** 2 + 2 * decelTo(d) * d));
   }
