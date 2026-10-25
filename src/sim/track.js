@@ -564,7 +564,9 @@ export function createTrack(seed = 7, mapId = 'foret') {
           const r = w.edge === 'arbres' ? 0.2 + r2() * 0.2 : 0.45 + r2() * r2() * 0.9;
           const f = sample(s), u = side * (w.half + (w.edge === 'arbres' ? 0.55 + r : 0.45 + r * 0.95) + r2() * (w.edge === 'arbres' ? 1.4 : 0.6));
           const x = f.x + u * f.rx, z = f.z + u * f.rz;
-          const ground = terrainHeight(x, z, f.d, Math.abs(u));
+          // (le sol qu'on voit : dans une traversée, la piste est entaillée dans la pente ; côté amont, le relief naturel
+          // est plus haut que le bord de la piste, et un tronc posé dessus flotterait)
+          const ground = Math.min(terrainHeight(x, z, f.d, Math.abs(u)), trailY(s, u));
           if (w.edge === 'arbres') {
             if (treeNear(x, z, 0.8)) continue;
             const h = 11 + r2() * 12, hue = r2(), pick = r2();

@@ -49,7 +49,8 @@ const VARIANTS = {
   ],
   // L'olivier des terrasses : un tronc court et tordu, des feuilles étroites, gris argenté.
   olivier: [
-    { preset: 'Oak Small', seed: 4242, opts: olivier(0.35) },
+    { preset: 'Oak Small', seed: 2024, opts: olivier(0.35) },
+    { preset: 'Oak Small', seed: 777, opts: olivier(0.35) },
     { preset: 'Oak Small', seed: 1789, opts: olivier(0.5) },
   ],
 };
@@ -91,7 +92,7 @@ function chenevert(spread) {
 function olivier(twist) {
   return (o) => {
     o.branch.length[0] = 16;
-    o.branch.gnarliness[0] = 0.32;
+    o.branch.gnarliness[0] = 0.18; // (plus, le tronc tordu repartirait vers le bas)
     o.branch.twist[0] = twist;
     o.branch.radius[0] = 1.5;
     o.branch.start[1] = 0.32;
@@ -138,12 +139,20 @@ function generate(v, kind, low) {
   return tree;
 }
 
-/** Ramène une géométrie à une hauteur de 1, pied à l'origine. */
+/**
+ * Ramène un arbre (écorce, feuilles) à une hauteur de 1, le pied du tronc à l'origine. Le pied, pas le point le plus
+ * bas : une branche ou des feuilles qui pendent plus bas que lui (un tronc tordu, penché) passeraient sinon sous le
+ * tronc, et l'arbre flotterait d'autant au-dessus du sol. Le pied, c'est le premier anneau du tronc (EZ-Tree le
+ * construit d'abord).
+ */
 function normalize(geometries) {
   const box = new THREE.Box3();
   for (const g of geometries) { g.computeBoundingBox(); box.union(g.boundingBox); }
-  const h = box.max.y - box.min.y;
-  const m = new THREE.Matrix4().makeScale(1 / h, 1 / h, 1 / h).multiply(new THREE.Matrix4().makeTranslation(0, -box.min.y, 0));
+  const p = geometries[0].attributes.position;
+  let foot = Infinity;
+  for (let k = 0; k < Math.min(24, p.count); k++) foot = Math.min(foot, p.getY(k));
+  const h = box.max.y - foot;
+  const m = new THREE.Matrix4().makeScale(1 / h, 1 / h, 1 / h).multiply(new THREE.Matrix4().makeTranslation(0, -foot, 0));
   for (const g of geometries) { g.applyMatrix4(m); g.computeBoundingSphere(); }
   return { width: (box.max.x - box.min.x) / h, depth: (box.max.z - box.min.z) / h };
 }

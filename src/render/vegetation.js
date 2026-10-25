@@ -389,6 +389,8 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     const y = track.groundY(x, z);
     const big = kind === 'fern' || kind === 'buisson' || kind === 'genet';
     const size = kind === 'epilobe' ? 0.9 + rand() * 0.7 : big ? 0.7 + rand() * 0.6 : 0.35 + rand() * 0.45 + (1 - forest) * 0.15;
+    // Les buissons du maquis, larges et à hauteur de guidon : derrière la rubalise, pas dans la figure du pilote.
+    if ((kind === 'buisson' || kind === 'genet') && Number.isFinite(near.dist) && near.dist < track.tapeAt(near.s) + 0.3 + size * 0.75) continue;
     q.setFromAxisAngle(up, rand() * Math.PI);
     col.setScalar(0.75 + rand() * 0.4);
     // En altitude, l'herbe est rase et jaunie ; sous les arbres, plus sombre.
