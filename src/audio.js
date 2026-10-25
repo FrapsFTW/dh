@@ -60,8 +60,16 @@ export class Sound {
     if (this.ctx) this.buildReverb();
   }
 
+  /** La pause (le menu ouvert pendant une manche) : tout se tait, et reprend où il en était. */
+  pause(on) {
+    this.paused = on;
+    if (!this.ctx) return;
+    if (on && this.ctx.state === 'running') this.ctx.suspend();
+    else if (!on && this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
   start() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.ctx) { if (this.ctx.state === 'suspended' && !this.paused) this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = (this.ctx = new AC());

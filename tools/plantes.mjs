@@ -24,20 +24,20 @@ fs.mkdirSync(OUT, { recursive: true });
 // nom : id Poly Haven, triangles par plante au plus, plantes à écarter (d'après leur nom), taille de la texture, erreur
 // permise en allégeant (en part de la taille de la plante : plus pour un buisson dense, qui part de très haut)
 export const ESPECES = {
-  fougere: { id: 'fern_02', tris: 550 },
-  herbe: { id: 'grass_medium_01', tris: 160, skip: /tiny|small|mid_[bc]|large_b|tall_c/ },
-  'herbe-seche': { id: 'grass_medium_02', tris: 200 },
-  pissenlit: { id: 'dandelion_01', tris: 450 },
+  fougere: { id: 'fern_02', tris: 400 },
+  herbe: { id: 'grass_medium_01', tris: 120, skip: /tiny|small|mid_[bc]|large_b|tall_c/ },
+  'herbe-seche': { id: 'grass_medium_02', tris: 130 },
+  pissenlit: { id: 'dandelion_01', tris: 300 },
   ficaire: { id: 'celandine_01', tris: 350 },
   empodium: { id: 'flower_empodium', tris: 300 },
-  ortie: { id: 'nettle_plant', tris: 550, skip: /small_b/ },
-  bardane: { id: 'weed_plant_02', tris: 400 },
+  ortie: { id: 'nettle_plant', tris: 400, skip: /small_b/ },
+  bardane: { id: 'weed_plant_02', tris: 280 },
   oseille: { id: 'shrub_sorrel_01', tris: 220, skip: /_[g-k]$/ },
-  arbrisseau: { id: 'shrub_03', tris: 450 },
-  myrtille: { id: 'shrub_04', tris: 500, split: true },
-  bruyere: { id: 'wild_rooibos_bush', tris: 600, skip: /_a$/ },
-  gazania: { id: 'flower_gazania', tris: 400, skip: /_[a-d]_/ },
-  myrte: { id: 'othonna_cerarioides', tris: 900, err: 0.3, skip: /_[abg]$/ },
+  arbrisseau: { id: 'shrub_03', tris: 320 },
+  myrtille: { id: 'shrub_04', tris: 350, split: true },
+  bruyere: { id: 'wild_rooibos_bush', tris: 340, skip: /_[ab]$/ },
+  gazania: { id: 'flower_gazania', tris: 280, skip: /_[a-d]_/ },
+  myrte: { id: 'othonna_cerarioides', tris: 650, err: 0.3, skip: /_[abcg]$/ },
 };
 
 async function download(id) {

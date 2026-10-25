@@ -8,6 +8,7 @@ import { MODES, MODE_IDS, modeParams } from './sim/modes.js';
 import { MAPS, MAP_IDS, distToPolyline } from './sim/maps.js';
 import { autopilot } from './sim/autopilot.js';
 import { Input } from './input.js';
+import { createMenu } from './menu.js';
 import { Sound, SOUND_SETTINGS } from './audio.js';
 import { createScene } from './render/scene.js';
 import { loadGroundTextures } from './render/groundTextures.js';
@@ -84,7 +85,9 @@ if (params.has('depart')) {
 // ----- Affichage -----
 await loading('Plantation de la forêt…', 0.4);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
-const low = params.get('qualite') === 'basse';
+// Les graphismes légers (?qualite=basse, ou le choix du menu, retenu) : moins de plantes en 3D, pas d'ombres sur la végétation.
+const QUALITY_KEY = 'downhill.qualite';
+const low = params.has('qualite') ? params.get('qualite') === 'basse' : (() => { try { return localStorage.getItem(QUALITY_KEY) === 'basse'; } catch { return false; } })();
 const maxRatio = params.has('shot') || low ? 1 : Math.min(devicePixelRatio, 1.75);
 let pixelRatio = maxRatio;
 renderer.setPixelRatio(pixelRatio);
@@ -136,6 +139,9 @@ await renderer.compileAsync(world.farScene, camera);
 await loading('C\'est parti', 1);
 
 // ----- Réglages en jeu (touche G) -----
+// (les volumes réglés dans le menu sont retenus)
+const SOUND_KEY = 'downhill.son';
+try { Object.assign(SOUND_SETTINGS, JSON.parse(localStorage.getItem(SOUND_KEY)) || {}); } catch { /* stockage indisponible */ }
 const gui = new GUI({ title: 'Réglages (G)' });
 const P = sim.params;
 const modeChoice = { mode };
@@ -218,8 +224,8 @@ let best = loadBest(mode);
 let ghostOn = !!(best && best.trace);
 let message = null, messageUntil = 0;
 let lastSplits = 0, finishShownAt = 0, shownCrash = null, recordThisRun = false;
-const help = $('help');
-if (!params.has('nohelp') && !auto) help.classList.remove('hidden');
+const menu = createMenu();
+if (!params.has('nohelp') && !auto) menu.show('pistes');
 $('loading').remove();
 if (!params.has('nohud')) $('hud').classList.remove('hidden'); // ?nohud : l'image seule (captures)
 
@@ -276,6 +282,7 @@ function updateModeUI() {
     : pelotonOn ? `Départ en ligne avec ${peloton.riders.length} rivaux. Le chrono part au GO pour tout le monde ; tu as le dossard ${PLAYER.num}, au rang ${Math.floor(PLAYER.slot / ((track.map.peloton && track.map.peloton.cols) || 3)) + 1} de la grille. Ils passent au travers de toi.`
       : 'Seul contre le chrono, départ dans la cabane.';
   $('rank').classList.toggle('hidden', !pelotonOn && !netRace);
+  updateMenu();
 }
 /** Départ en ligne ou contre la montre. La manche recommence. */
 function setPeloton(on) {
@@ -288,19 +295,76 @@ function setPeloton(on) {
   if (!auto) showMessage(on ? 'Départ en ligne' : 'Contre la montre', startHint(), 9999, true);
   updateModeUI();
 }
-for (const b of document.querySelectorAll('[data-start]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setPeloton(b.dataset.start === 'peloton'); });
+for (const b of document.querySelectorAll('[data-start]')) b.addEventListener('click', () => setPeloton(b.dataset.start === 'peloton'));
 for (const b of document.querySelectorAll('[data-map]')) b.addEventListener('click', () => {
-  if (phase !== 'hut' && phase !== 'finished') return;
   // En ligne : l'hôte change la piste du salon, et tout le monde la charge (voir onRoom).
   if (net) { if (isHost() && b.dataset.map !== mapId) net.send({ t: 'config', map: b.dataset.map }); return; }
   switchMap(b.dataset.map);
 });
-for (const b of document.querySelectorAll('[data-mode]')) b.addEventListener('click', () => { if (phase === 'hut' || phase === 'finished') setMode(b.dataset.mode); });
+for (const b of document.querySelectorAll('[data-mode]')) b.addEventListener('click', () => { if (b.dataset.mode !== mode) setMode(b.dataset.mode); });
 const nextMode = () => MODE_IDS[(MODE_IDS.indexOf(mode) + 1) % MODE_IDS.length];
-const startHint = () => (net ? `En ligne, salon ${net.code} : l'hôte lance la course (H pour le salon) · en attendant, pédale pour rouler seul`
+const startHint = () => (net ? `En ligne, salon ${net.code} : l'hôte lance la course (Échap ou Start pour le salon) · en attendant, pédale pour rouler seul`
   : pelotonOn
   ? `Départ en ligne : pédale ou appuie sur A, le compte à rebours part pour tout le monde · N : contre la montre`
-  : `Pédale ou appuie sur A pour lancer le départ · mode ${MODES[mode].name} (M ou LB pour changer)${peloton ? ' · N : départ en ligne' : ''}`);
+  : `Pédale ou appuie sur A pour lancer le départ · Échap ou Start : le menu (pistes, mode, options)`);
+// ----- Le menu -----
+// Les records de chaque piste (contre la montre, dans le mode choisi) sur leurs cartes.
+const recordOf = (m, md) => { try { return JSON.parse(localStorage.getItem(m === 'foret' ? `downhill.record.v3.${md}` : `downhill.record.v3.${m}.${md}`)); } catch { return null; } };
+for (const m of MAP_IDS) {
+  const q = (k) => document.querySelector(`[data-${k}="${m}"]`);
+  if (q('tag')) q('tag').textContent = MAPS[m].tag || '';
+  if (q('stats')) q('stats').textContent = MAPS[m].stats || '';
+}
+function updateMenu() {
+  for (const m of MAP_IDS) {
+    const el = document.querySelector(`[data-rec="${m}"]`), r = recordOf(m, mode);
+    if (el) el.textContent = r ? `Record ${fmt(r.time)}` : '';
+  }
+  for (const b of document.querySelectorAll('[data-ghost]')) b.classList.toggle('on', (b.dataset.ghost === '1') === ghostOn);
+  for (const b of document.querySelectorAll('[data-cam]')) b.classList.toggle('on', b.dataset.cam === rig.mode);
+  for (const b of document.querySelectorAll('[data-quality]')) b.classList.toggle('on', (b.dataset.quality === 'basse') === low);
+  for (const i of document.querySelectorAll('[data-sound]')) i.value = SOUND_SETTINGS[i.dataset.sound];
+  // « Rouler » : partir de la cabane, reprendre la manche en pause, ou en refaire une.
+  $('mGo').textContent = phase === 'ride' || phase === 'countdown' ? 'Reprendre' : phase === 'finished' ? 'Nouvelle manche' : 'Rouler';
+  $('mRestart').classList.toggle('hidden', !(phase === 'ride' || phase === 'countdown') || !!netRace);
+}
+function openMenu(t) {
+  updateMenu();
+  menu.show(t);
+  menu.syncPad();
+}
+function closeMenu() { menu.hide(); }
+// La description de la piste sous les cartes : celle qu'on survole ou qu'on a choisie à la manette, sinon la piste actuelle.
+for (const b of document.querySelectorAll('.mapCard')) {
+  const show = () => { $('mapBlurb').textContent = MAPS[b.dataset.map].blurb; };
+  const back = () => { $('mapBlurb').textContent = MAPS[mapId].blurb; };
+  b.addEventListener('mouseenter', show); b.addEventListener('focus', show);
+  b.addEventListener('mouseleave', back); b.addEventListener('blur', back);
+}
+$('mGo').addEventListener('click', () => {
+  closeMenu();
+  if (phase === 'finished') restart();
+  else if (phase === 'hut') { phase = 'countdown'; countdown = 3.999; lastBeep = 4; message = null; }
+});
+$('mRestart').addEventListener('click', () => { closeMenu(); restart(); });
+for (const b of document.querySelectorAll('[data-ghost]')) b.addEventListener('click', () => { ghostOn = b.dataset.ghost === '1'; updateMenu(); });
+for (const b of document.querySelectorAll('[data-cam]')) b.addEventListener('click', () => { rig.setMode(b.dataset.cam); updateMenu(); });
+for (const b of document.querySelectorAll('[data-quality]')) b.addEventListener('click', () => {
+  const basse = b.dataset.quality === 'basse';
+  if (basse === low) return;
+  try { localStorage.setItem(QUALITY_KEY, basse ? 'basse' : 'haute'); } catch { /* stockage indisponible */ }
+  const q = new URLSearchParams(location.search);
+  q.delete('qualite');
+  location.search = q.toString();
+});
+for (const i of document.querySelectorAll('[data-sound]')) i.addEventListener('input', () => {
+  SOUND_SETTINGS[i.dataset.sound] = Number(i.value);
+  try { localStorage.setItem(SOUND_KEY, JSON.stringify(SOUND_SETTINGS)); } catch { /* stockage indisponible */ }
+  gui.controllersRecursive().forEach((c) => c.updateDisplay());
+});
+$('mAdvanced').addEventListener('click', () => { closeMenu(); gui.show(); gui.open(); });
+$('resAgain').addEventListener('click', () => restart());
+$('resMenu').addEventListener('click', () => openMenu());
 updateModeUI();
 
 /** Une nouvelle manche ; online : la course en ligne où l'on part (sinon, on quitte celle en cours). */
@@ -321,7 +385,7 @@ function restart(online = null) {
   myHist.length = 0;
   $('results').classList.add('hidden');
   $('splitBox').innerHTML = '';
-  if (online) help.classList.add('hidden');
+  if (online) menu.hide();
   else if (!auto) showMessage('', startHint(), 9999, true);
   updateModeUI();
 }
@@ -657,7 +721,7 @@ function updateOnlineUI() {
   $('olOff').classList.toggle('hidden', !!net);
   $('olOn').classList.toggle('hidden', !net);
   $('resOnline').classList.toggle('hidden', !net);
-  $('resGo').textContent = net ? 'Entrée ou Start : rouler seul en attendant · H : le salon' : 'Entrée ou Start : nouvelle manche · F : affronter ton fantôme';
+  $('resGo').textContent = net ? 'Entrée : rouler seul en attendant · Échap ou Start : le salon' : 'Entrée ou A : nouvelle manche · Échap ou Start : le menu · F : affronter ton fantôme';
   if (!net) return;
   const room = net.room, host = isHost(), racingNow = roomRacing(room);
   $('olCodeShow').textContent = net.code;
@@ -752,7 +816,16 @@ function frame(now) {
   clock += dt;
   const { control, actions } = input.read(dt);
 
-  if (actions.help) help.classList.toggle('hidden');
+  // Le menu : Échap, H ou Start l'ouvrent et le ferment. Ouvert, il a la main (la manette y navigue) et la manche est en
+  // pause, sauf en ligne (les autres continuent de rouler).
+  const menuWasOpen = menu.isOpen();
+  if (actions.menu) { if (menuWasOpen) closeMenu(); else openMenu(); }
+  else if (menuWasOpen) menu.poll(dt, closeMenu);
+  if (menuWasOpen || menu.isOpen()) for (const k of Object.keys(actions)) delete actions[k];
+  const paused = menu.isOpen() && !netRace && (phase === 'ride' || phase === 'countdown');
+  if (paused !== !!sound.paused) sound.pause(paused);
+  // L'écran d'arrivée : A (ou Espace) refait une manche.
+  if (phase === 'finished' && actions.start && !$('results').classList.contains('hidden')) restart();
   if (actions.settings) gui._hidden ? (gui.show(), gui.open()) : gui.hide();
   if (actions.camera) rig.toggle();
   if (actions.ghost) { ghostOn = !ghostOn; showMessage('', ghostOn ? (best && best.trace ? 'Fantôme du record affiché' : 'Pas encore de record à rejouer') : 'Fantôme masqué', 1.5, true); if (phase === 'finished') restart(); }
@@ -769,10 +842,10 @@ function frame(now) {
   if (actions.respawn && phase === 'ride') { sim.respawn(); rig.reset(); }
 
   // Le départ : on lance le compte à rebours depuis la cabane.
-  if (phase === 'hut' && (actions.start || control.pedal || control.hop)) {
-    phase = 'countdown'; countdown = 3.999; lastBeep = 4; help.classList.add('hidden'); message = null;
+  if (phase === 'hut' && !menu.isOpen() && (actions.start || control.pedal || control.hop)) {
+    phase = 'countdown'; countdown = 3.999; lastBeep = 4; message = null;
   }
-  if (phase === 'countdown') {
+  if (phase === 'countdown' && !paused) {
     countdown = netRace ? (netRace.at - net.now()) / 1000 : countdown - dt;
     const n = Math.ceil(countdown);
     if (n < lastBeep && n >= 0) {
@@ -789,7 +862,7 @@ function frame(now) {
 
   // La physique, à pas fixe.
   const race = sim.race;
-  acc += dt;
+  acc += paused ? 0 : dt;
   let n = 0;
   const maxSteps = params.has('shot') ? 60 : 12;
   while (acc >= STEP && n < maxSteps) {
@@ -882,7 +955,7 @@ function frame(now) {
   $('progRight').textContent = race.trapSpeed != null ? `Radar ${(race.trapSpeed * 3.6).toFixed(1)} km/h` : `${Math.max(0, track.sFinish - race.s).toFixed(0)} m`;
   $('progLeft').textContent = race.crashes ? `Chutes : ${race.crashes}` : 'Départ';
   const msgEl = $('message');
-  if (message && now < messageUntil) {
+  if (message && now < messageUntil && !menu.isOpen()) {
     msgEl.innerHTML = `${message.big ? `<div class="big">${message.big}</div>` : ''}${message.small ? `<div class="${message.pill ? 'pill' : 'small'}">${message.small}</div>` : ''}`;
   } else msgEl.textContent = '';
   const ctl = st.input;
@@ -922,7 +995,7 @@ window.__game = {
   stage,
   /** Affiche le peloton même avec ?depart (captures). */
   showPeloton() { if (peloton) { pelotonOn = true; updateModeUI(); } },
-  start() { if (phase === 'hut') { phase = 'countdown'; countdown = 3.999; lastBeep = 4; help.classList.add('hidden'); message = null; } },
+  start() { if (phase === 'hut') { phase = 'countdown'; countdown = 3.999; lastBeep = 4; menu.hide(); message = null; } },
   /** Mesure : ce que dessine une image (toutes passes : ombres, lointain, scène) et le temps de mise à jour du décor. */
   perf() {
     renderer.info.autoReset = false;

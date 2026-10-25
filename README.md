@@ -15,6 +15,12 @@ npm run dev
 
 Puis ouvrir http://localhost:5180. Une manette est fortement conseillée : tout est progressif (gâchettes, sticks).
 
+Le menu s'ouvre au lancement, puis à tout moment avec Échap (ou H) au clavier, Start à la manette ; ouvert pendant une
+manche, il la met en pause (sauf en ligne). On y choisit la piste (une carte par piste, avec son record), le mode, le
+départ et le fantôme, le salon en ligne, les commandes, les options (graphismes élevés ou légers, caméra, volumes).
+Changer de piste se fait directement, même en pleine manche. À la manette : la croix ou le stick vers le bouton voisin,
+A pour choisir, B pour revenir, LB / RB pour passer d'une rubrique à l'autre.
+
 | | Manette | Clavier (AZERTY) |
 |---|---|---|
 | Tourner | stick gauche ↔ | Q D ou ← → |
@@ -26,16 +32,17 @@ Puis ouvrir http://localhost:5180. Une manette est fortement conseillée : tout 
 | Pédaler | X ou RB | Z ou ↑ |
 | Regarder autour | stick droit | |
 | Repartir du dernier point | Y ou B | R |
-| Recommencer la manche | Start | Entrée |
+| Menu (et pause) | Start | Échap ou H |
+| Recommencer la manche | dans le menu | Entrée |
 | Vue extérieure | Select | C |
 | Fantôme du record | | F |
 | Changer de mode (avant le départ) | LB | M |
-| Changer de piste (avant le départ) | sur l'écran d'aide ou dans les réglages | |
-| Réglages de la physique · pilote auto · aide | | G · P · H |
+| Changer de piste | dans le menu | |
+| Réglages de la physique · pilote auto | | G · P |
 
 Paramètres d'adresse utiles : `?carte=alpes` (La Grande Combe), `?carte=foret`, `avalanche`, `bikepark` ou `single`, `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
 pilote auto tente la figure au saut d'arrivée), `?cam=chase` (vue extérieure), `?seed=12` (une autre forêt),
-`?qualite=basse` (ombres, antialiasing et forêt allégés, pour les petites cartes graphiques), `?depart=600&vitesse=13`
+`?qualite=basse` (ombres, antialiasing, forêt et plantes allégés, pour les petites cartes graphiques ; c'est aussi le choix « Légers » du menu, retenu), `?depart=600&vitesse=13`
 (lancé à 600 m de la cabane). La résolution s'adapte aussi
 toute seule si les images ralentissent.
 
@@ -54,8 +61,8 @@ pilote et pardonne un peu plus. Le mode **Ultra-réaliste** garde les réglages 
 | Inclinaison, bascule avant, bascule arrière tolérées | 80°, 62°, 75° | 72°, 54°, 66° |
 | Hors des rubalises | 3 s tolérées | 1,5 s |
 
-Chaque piste a, dans chaque mode, son record et son fantôme. On choisit le mode sur l'écran d'aide, avec M ou LB avant le départ, ou dans
-les réglages (G).
+Chaque piste a, dans chaque mode, son record et son fantôme. On choisit le mode dans le menu, ou avec M ou LB avant le
+départ.
 
 ## Les figures
 
@@ -87,7 +94,7 @@ trajectoire complète : on peut ensuite courir contre son fantôme (touche F).
 
 ### Le départ en ligne
 
-Avec la touche N (ou le bouton de l'écran d'aide), on part en ligne avec vingt rivaux, en rangs de trois sur une
+Avec la touche N (ou dans le menu, rubrique Course), on part en ligne avec vingt rivaux, en rangs de trois sur une
 grille juste après l'arche ; le joueur a le dossard 21, au quatrième rang. Le chrono part au GO pour tout le monde. En
 haut à droite : la place, et l'écart avec le rival de devant et celui de derrière ; à l'arrivée, le classement. Les
 rivaux passent au travers du joueur (pas de collisions). Ce départ a son propre record. Pour l'ouvrir directement :
@@ -108,7 +115,7 @@ node tools/peloton.mjs [piste…]   # → public/peloton/<piste>.bin, une descen
 
 ## Jouer en ligne
 
-Avec ses potes, jusqu'à huit, chacun sur son ordinateur. Sur l'écran d'accueil (H), « Créer un salon » donne un code
+Avec ses potes, jusqu'à huit, chacun sur son ordinateur. Dans le menu, rubrique En ligne, « Créer un salon » donne un code
 de cinq lettres et un lien à envoyer (`?salon=CODE`) ; les autres l'ouvrent, ou tapent le code. Le premier arrivé est
 l'hôte : il choisit la piste (tout le monde la charge) et le mode, puis lance la course. Tout le monde part au même GO,
 sur une grille comme le départ en ligne : le compte à rebours est réglé sur l'heure du serveur, que chacun estime au
@@ -269,7 +276,7 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
   d'imposteurs sur le relief lointain. En montagne, les arbres s'arrêtent à une altitude, en rapetissant.
 - `src/render/vegetation.js` et `src/render/plants.js` : herbes, fleurs, fougères, arbrisseaux, rochers, troncs
   couchés. Les plantes sont des scans de Poly Haven (`public/plantes/`, préparés par `npm run plantes` : découpés,
-  allégés, texture et transparence réunies) : en 3D jusqu'à 28 m (45 m pour les grandes), plante par plante, puis en
+  allégés, texture et transparence réunies) : en 3D jusqu'à 22 m (36 m pour les grandes), plante par plante, puis en
   cartes croisées qui portent leur image, rendue au lancement depuis les mêmes modèles (un atlas pour toutes). Chaque
   piste a sa flore : forêt et alpage des Alpes, fougères et épilobes du Bike Park, maquis du Single. Les feuilles ont
   des bords doux (alpha-to-coverage), plient au vent et s'allument à contre-jour ; en altitude, l'herbe jaunit.
@@ -300,6 +307,9 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
   (`public/models/bike-lod.glb`, fait par `tools/bike-lod.mjs`), en formes simples au loin, noms des plus proches.
 - `src/render/arms.js` : les bras et les mains du pilote, détaillés (`public/models/bras.glb`) : posés sur le cintre à
   chaque image, doigts refermés sur les poignées, maillot et gants peints d'après des zones marquées sur le modèle.
+- `src/menu.js` : le menu (Échap, H ou Start) : ses rubriques, et la navigation au clavier et à la manette (vers le
+  bouton le plus proche dans la direction choisie). Les images des pistes (`public/menu/`) sont des captures du jeu,
+  faites par `node tools/menu-images.mjs`.
 - `src/audio.js` : le son. Des prises réelles (CC0, `public/sons/`) pour ce qui se reconnaît à l'oreille, de la synthèse
   pour ce qui suit la physique de près :
   - le roulement : une prise de terre et une de graviers, mêlées selon le sol de chaque roue, plus fortes et plus

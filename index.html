@@ -21,11 +21,6 @@
     #timer .tag { background: var(--accent); font-weight: 900; font-size: 14px; letter-spacing: .08em; padding: 0 10px; display: flex; align-items: center; }
     #timer .time { background: var(--panel2); font-size: 34px; font-weight: 800; padding: 4px 14px; min-width: 150px; text-align: right; }
     #timer .mode { background: var(--panel); font-size: 11px; font-weight: 800; letter-spacing: .08em; padding: 0 9px; display: flex; align-items: center; color: var(--muted); }
-    .modes { display: flex; gap: 8px; margin: 4px 0 6px; flex-wrap: wrap; }
-    .modes button { font: inherit; font-weight: 800; font-size: 15px; color: var(--fg); background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); padding: 7px 14px; cursor: pointer; }
-    .modes button.on { background: var(--accent); border-color: var(--accent); }
-    #modeBlurb, #mapBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
-    [data-map].on { background: #1d5fb8 !important; border-color: #1d5fb8 !important; }
     #splitBox { position: absolute; top: 70px; left: 18px; display: flex; flex-direction: column; gap: 4px; }
     .split { display: flex; font-size: 15px; font-weight: 700; background: var(--panel); }
     .split .n { background: rgba(255,255,255,.12); padding: 4px 8px; min-width: 64px; }
@@ -60,11 +55,7 @@
     .classement .nm { flex: 1; }
     .classement .d { width: 64px; text-align: right; color: var(--muted); font-size: 13px; }
     .classement .dots { text-align: center; color: var(--muted); line-height: 1; }
-    #startBlurb { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 12px; }
-    .modes button:disabled { opacity: .4; cursor: default; }
     /* Le jeu en ligne : le salon, sur l'écran d'accueil. */
-    #online { margin: 2px 0 16px; padding: 12px 14px; background: rgba(255,255,255,.05); border-left: 3px solid #1d5fb8; }
-    #online .olHead { font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
     #online .olRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
     #online input { font: inherit; font-size: 15px; font-weight: 700; color: var(--fg); background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.18); padding: 6px 10px; width: 170px; }
     #online input#olCode { width: 90px; text-transform: uppercase; letter-spacing: .12em; }
@@ -112,13 +103,72 @@
     kbd { background: rgba(255,255,255,.13); padding: 1px 6px; font-family: inherit; font-size: 13px; white-space: nowrap; }
     .go { margin-top: 16px; font-weight: 800; font-size: 16px; }
     .tips { margin-top: 10px; font-size: 13px; color: rgba(255,255,255,.75); }
-    #pad { margin-top: 8px; font-size: 13px; color: var(--muted); }
     #results .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 16px; }
     #results .row b { font-variant-numeric: tabular-nums; }
     #results .final { font-size: 52px; font-weight: 900; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
     #loading { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; font-size: 18px; color: #1d2b38; font-weight: 600; background: #bccfdc; }
     #loading .b { width: 260px; height: 4px; background: rgba(0,0,0,.12); }
     #loading .b i { display: block; height: 100%; width: 0; background: #1d2b38; transition: width .2s; }
+
+    /* Le menu (Échap, Start) : à gauche le titre et les rubriques, à droite la rubrique choisie ; la piste reste visible
+       derrière. Tout se règle à la souris, au clavier ou à la manette (ce qui est choisi a un contour blanc). */
+    #menu { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(270px, 330px) 1fr; pointer-events: auto;
+      background: linear-gradient(90deg, rgba(5,8,12,.94) 0, rgba(5,8,12,.86) 330px, rgba(5,8,12,.62) 100%); backdrop-filter: blur(4px); }
+    #menu button { font-family: inherit; color: var(--fg); cursor: pointer; }
+    #menu button:focus { outline: none; }
+    #menu button:focus-visible, #menu .nav-focus { outline: 3px solid #fff !important; outline-offset: 2px; }
+    #menu button:disabled { opacity: .4; cursor: default; }
+    .mL { display: flex; flex-direction: column; gap: 4px; padding: 34px 26px 22px; border-right: 1px solid rgba(255,255,255,.07); overflow: auto; }
+    .logo { margin-bottom: 26px; }
+    .logo b { display: block; font-size: 46px; font-weight: 900; font-style: italic; letter-spacing: -.02em; line-height: .95; }
+    .logo b::after { content: ""; display: block; width: 64px; height: 5px; background: var(--accent); margin-top: 10px; transform: skewX(-20deg); }
+    .logo span { display: block; margin-top: 10px; font-size: 12px; font-weight: 800; letter-spacing: .16em; color: var(--muted); }
+    .mGo { background: var(--accent); border: 0; font-size: 22px !important; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; padding: 14px 18px; text-align: left; margin-bottom: 4px; }
+    .mGo:hover { filter: brightness(1.1); }
+    .mNav { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-left: 4px solid transparent; padding: 11px 14px; font-size: 18px !important; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--muted) !important; }
+    .mNav:hover { background: rgba(255,255,255,.06); color: var(--fg) !important; }
+    .mNav.on { border-left-color: var(--accent); color: var(--fg) !important; background: rgba(255,255,255,.05); }
+    #mRestart { margin-bottom: 10px; color: var(--fg) !important; }
+    #mTabs { margin-top: 8px; }
+    .mFoot { margin-top: auto; padding-top: 20px; font-size: 12px; color: var(--muted); line-height: 1.6; display: flex; flex-direction: column; gap: 8px; }
+    .mR { padding: 40px 44px 30px 34px; overflow: auto; }
+    .mR section { max-width: 1000px; }
+    .mR h2 { margin: 22px 0 10px; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .mR h2:first-child { margin-top: 0; }
+    .blurb { font-size: 14px; color: rgba(255,255,255,.78); margin: 10px 0 0; max-width: 720px; line-height: 1.5; }
+    .blurb.intro { margin-top: 26px; color: var(--muted); }
+    .mapGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+    .mapCard { position: relative; display: flex; flex-direction: column; padding: 0; text-align: left; background: #0d1117; border: 2px solid rgba(255,255,255,.1); overflow: hidden; transition: transform .12s, border-color .12s; }
+    .mapCard:hover, .mapCard:focus-visible, .mapCard.nav-focus { transform: translateY(-3px); border-color: rgba(255,255,255,.7); }
+    .mapCard.on { border-color: var(--accent); }
+    .mapCard img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #27313b; }
+    .mcBody { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 12px; }
+    .mcBody b { font-size: 18px; font-weight: 900; }
+    .mcBody em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+    .mcFoot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 13px; font-weight: 700; }
+    .mcFoot .rec { color: var(--ahead); font-variant-numeric: tabular-nums; }
+    .mapCard .here { position: absolute; top: 8px; left: 8px; background: var(--accent); font-size: 11px; font-weight: 900; letter-spacing: .1em; padding: 3px 7px; display: none; }
+    .mapCard.on .here { display: block; }
+    .seg { display: flex; flex-wrap: wrap; }
+    .seg button { background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.14); margin-right: -2px; padding: 9px 18px; font-size: 15px; font-weight: 800; }
+    .seg button:hover { background: rgba(255,255,255,.12); }
+    .seg button.on { background: var(--accent); border-color: var(--accent); position: relative; }
+    .sliders { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px 26px; max-width: 720px; }
+    .sliders label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700; color: rgba(255,255,255,.85); }
+    .sliders input { accent-color: var(--accent); width: 100%; }
+    .sliders input.nav-focus { outline: 3px solid #fff; outline-offset: 4px; }
+    #online { padding: 14px 16px; background: rgba(255,255,255,.05); border-left: 3px solid #1d5fb8; max-width: 720px; }
+    #menu table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    #menu td, #menu th { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
+    #menu th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+    #pad { color: var(--muted); }
+    .resBtns { display: flex; gap: 10px; margin-top: 14px; }
+    @media (max-width: 760px) {
+      #menu { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .mL { padding: 18px 16px 8px; border-right: 0; } .logo { margin-bottom: 10px; } .logo b { font-size: 32px; }
+      #mTabs { display: flex; overflow-x: auto; } .mNav { width: auto; white-space: nowrap; font-size: 14px !important; padding: 8px 10px; }
+      .mFoot { display: none; } .mR { padding: 16px; }
+    }
     @media (max-width: 760px) {
       #timer .time { font-size: 26px; min-width: 110px; } #speed .v { font-size: 30px; } #inputs { display: none; }
       #progress { width: 140px; } #message .big { font-size: 42px; }
@@ -144,46 +194,95 @@
       <span id="surface"></span>
     </div>
   </div>
-  <div id="help" class="screen hidden">
-    <div class="card">
-      <h1>Downhill</h1>
-      <p>Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, des temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
-      <div class="modes"><button data-map="foret">La Forêt</button><button data-map="alpes">La Grande Combe</button><button data-map="avalanche">L'Avalanche</button><button data-map="bikepark">Le Bike Park</button><button data-map="single">Le Single</button></div>
-      <div id="mapBlurb"></div>
-      <div class="modes"><button data-mode="normal">Normal</button><button data-mode="ultra">Ultra-réaliste</button></div>
-      <div id="modeBlurb"></div>
-      <div class="modes"><button data-start="seul">Contre la montre</button><button data-start="peloton">Départ en ligne</button></div>
-      <div id="startBlurb"></div>
-      <div id="online">
-        <div class="olHead">EN LIGNE AVEC TES POTES</div>
-        <div class="olRow"><input id="olName" maxlength="20" placeholder="Ton nom" autocomplete="nickname" /><span id="olColors"></span></div>
-        <div id="olOff" class="olRow"><button id="olCreate" class="main">Créer un salon</button><span id="olInfo0" style="font-size:13px;color:var(--muted)">ou</span><input id="olCode" maxlength="8" placeholder="CODE" /><button id="olJoin">Rejoindre</button></div>
-        <div id="olOn" class="hidden">
-          <div class="olRow"><span style="font-size:13px;color:var(--muted)">Salon</span><b id="olCodeShow"></b><button id="olCopy">Copier le lien</button><button id="olLeave">Quitter</button><span id="olStatus"></span></div>
-          <div id="olPlayers"></div>
-          <div class="olRow"><button id="olStart" class="main">Lancer la course</button><span id="olInfo"></span></div>
+  <div id="menu" class="hidden">
+    <div class="mL">
+      <div class="logo"><b>DOWNHILL</b><span>COUPE DES ALPES · DH</span></div>
+      <button id="mGo" class="mGo">Rouler</button>
+      <button id="mRestart" class="mNav hidden">Recommencer la manche</button>
+      <nav id="mTabs">
+        <button class="mNav" data-tab="pistes">Pistes</button>
+        <button class="mNav" data-tab="course">Course</button>
+        <button class="mNav" data-tab="online">En ligne</button>
+        <button class="mNav" data-tab="commandes">Commandes</button>
+        <button class="mNav" data-tab="options">Options</button>
+      </nav>
+      <div class="mFoot"><div id="pad"></div><div><kbd>Échap</kbd> ou <kbd>Start</kbd> : menu · manette : croix ou stick, <kbd>A</kbd> choisir, <kbd>B</kbd> retour, <kbd>LB</kbd> <kbd>RB</kbd> rubriques</div></div>
+    </div>
+    <div class="mR">
+      <section data-panel="pistes">
+        <h2>Choisis ta piste</h2>
+        <div class="mapGrid">
+          <button class="mapCard" data-map="foret"><img src="menu/foret.jpg" alt="" loading="lazy" /><span class="mcBody"><b>La Forêt</b><em data-tag="foret"></em><span class="mcFoot"><span data-stats="foret"></span><span class="rec" data-rec="foret"></span></span></span><span class="here">ICI</span></button>
+          <button class="mapCard" data-map="alpes"><img src="menu/alpes.jpg" alt="" loading="lazy" /><span class="mcBody"><b>La Grande Combe</b><em data-tag="alpes"></em><span class="mcFoot"><span data-stats="alpes"></span><span class="rec" data-rec="alpes"></span></span></span><span class="here">ICI</span></button>
+          <button class="mapCard" data-map="avalanche"><img src="menu/avalanche.jpg" alt="" loading="lazy" /><span class="mcBody"><b>L'Avalanche</b><em data-tag="avalanche"></em><span class="mcFoot"><span data-stats="avalanche"></span><span class="rec" data-rec="avalanche"></span></span></span><span class="here">ICI</span></button>
+          <button class="mapCard" data-map="bikepark"><img src="menu/bikepark.jpg" alt="" loading="lazy" /><span class="mcBody"><b>Le Bike Park</b><em data-tag="bikepark"></em><span class="mcFoot"><span data-stats="bikepark"></span><span class="rec" data-rec="bikepark"></span></span></span><span class="here">ICI</span></button>
+          <button class="mapCard" data-map="single"><img src="menu/single.jpg" alt="" loading="lazy" /><span class="mcBody"><b>Le Single</b><em data-tag="single"></em><span class="mcFoot"><span data-stats="single"></span><span class="rec" data-rec="single"></span></span></span><span class="here">ICI</span></button>
         </div>
-      </div>
-      <table>
-        <tr><th></th><th>Manette (recommandée)</th><th>Clavier</th></tr>
-        <tr><td>Tourner</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd></td></tr>
-        <tr><td>Poids en avant / en arrière</td><td>stick gauche ↕</td><td><kbd>E</kbd> / <kbd>A</kbd></td></tr>
-        <tr><td>Frein avant · frein arrière</td><td>gâchette droite · gauche</td><td><kbd>S</kbd> ou <kbd>↓</kbd> les deux, <kbd>Maj</kbd> l'arrière seul</td></tr>
-        <tr><td>Se comprimer puis sauter</td><td><kbd>A</kbd> (maintenir, relâcher)</td><td><kbd>Espace</kbd> (maintenir, relâcher)</td></tr>
-        <tr><td>Whip : coucher le vélo (en l'air)</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> (sans <kbd>Espace</kbd>)</td></tr>
-        <tr><td>Figure (en l'air)</td><td><kbd>A</kbd> maintenu + stick : ↓ backflip, ↑ frontflip, ↔ 360</td><td><kbd>Espace</kbd> maintenu + <kbd>A</kbd> backflip, <kbd>E</kbd> frontflip, <kbd>Q</kbd> <kbd>D</kbd> 360</td></tr>
-        <tr><td>Pédaler</td><td><kbd>X</kbd> ou <kbd>RB</kbd></td><td><kbd>Z</kbd> ou <kbd>↑</kbd></td></tr>
-        <tr><td>Regarder autour</td><td>stick droit</td><td></td></tr>
-        <tr><td>Repartir du dernier point</td><td><kbd>Y</kbd> ou <kbd>B</kbd></td><td><kbd>R</kbd></td></tr>
-        <tr><td>Recommencer la manche</td><td><kbd>Start</kbd></td><td><kbd>Entrée</kbd></td></tr>
-        <tr><td>Vue extérieure · fantôme du record</td><td><kbd>Select</kbd></td><td><kbd>C</kbd> · <kbd>F</kbd></td></tr>
-        <tr><td>Changer de mode (avant le départ)</td><td><kbd>LB</kbd></td><td><kbd>M</kbd></td></tr>
-        <tr><td>Départ en ligne ou contre la montre</td><td></td><td><kbd>N</kbd></td></tr>
-        <tr><td>Réglages · pilote automatique · aide</td><td></td><td><kbd>G</kbd> · <kbd>P</kbd> · <kbd>H</kbd></td></tr>
-      </table>
-      <div class="tips">Conseils de pilote : freine avant le virage, pas dedans. Recule ton poids dans les pentes raides et quand tu freines fort. Les virages relevés se prennent bien plus vite que les plats. Comprime-toi avant une bosse et relâche au sommet pour sauter plus loin. Ne freine pas en l'air : la roue se bloque et tu atterris en glissant.<br>Whip : en l'air, pousse le stick sur le côté pour coucher le vélo comme les pros, et relâche-le avant de te poser ; en Ultra-réaliste, posé encore couché, tu tombes.<br>Figures : le saut d'arrivée est taillé pour (plus d'une seconde en l'air). Groupé, tu tournes plus vite ; lâche le bouton pour t'ouvrir et ralentir la rotation avant de te poser. En Normal, le pilote finit la rotation si tu as lâché au bon moment ; en Ultra-réaliste, c'est à toi de l'arrêter (stick dans l'autre sens, toujours groupé) et de te poser droit.</div>
-      <div class="go">Pédale ou appuie sur A pour lancer le compte à rebours.</div>
-      <div id="pad"></div>
+        <p id="mapBlurb" class="blurb"></p>
+      </section>
+      <section data-panel="course" class="hidden">
+        <h2>Mode</h2>
+        <div class="seg"><button data-mode="normal">Normal</button><button data-mode="ultra">Ultra-réaliste</button></div>
+        <p id="modeBlurb" class="blurb"></p>
+        <h2>Départ</h2>
+        <div class="seg"><button data-start="seul">Contre la montre</button><button data-start="peloton">Départ en ligne</button></div>
+        <p id="startBlurb" class="blurb"></p>
+        <h2>Fantôme du record</h2>
+        <div class="seg"><button data-ghost="1">Affiché</button><button data-ghost="0">Masqué</button></div>
+        <p class="blurb">Ton meilleur temps sur cette piste, dans ce mode, rejoué à côté de toi.</p>
+        <p class="blurb intro">Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, des temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
+      </section>
+      <section data-panel="online" class="hidden">
+        <h2>En ligne avec tes potes</h2>
+        <div id="online">
+          <div class="olRow"><input id="olName" maxlength="20" placeholder="Ton nom" autocomplete="nickname" /><span id="olColors"></span></div>
+          <div id="olOff" class="olRow"><button id="olCreate" class="main">Créer un salon</button><span id="olInfo0" style="font-size:13px;color:var(--muted)">ou</span><input id="olCode" maxlength="8" placeholder="CODE" /><button id="olJoin">Rejoindre</button></div>
+          <div id="olOn" class="hidden">
+            <div class="olRow"><span style="font-size:13px;color:var(--muted)">Salon</span><b id="olCodeShow"></b><button id="olCopy">Copier le lien</button><button id="olLeave">Quitter</button><span id="olStatus"></span></div>
+            <div id="olPlayers"></div>
+            <div class="olRow"><button id="olStart" class="main">Lancer la course</button><span id="olInfo"></span></div>
+          </div>
+        </div>
+        <p class="blurb">L'hôte du salon choisit la piste et le mode, puis lance la course : départ commun sur la grille. Envoie-leur le lien.</p>
+      </section>
+      <section data-panel="commandes" class="hidden">
+        <h2>Commandes</h2>
+        <table>
+          <tr><th></th><th>Manette (recommandée)</th><th>Clavier</th></tr>
+          <tr><td>Tourner</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> ou <kbd>←</kbd> <kbd>→</kbd></td></tr>
+          <tr><td>Poids en avant / en arrière</td><td>stick gauche ↕</td><td><kbd>E</kbd> / <kbd>A</kbd></td></tr>
+          <tr><td>Frein avant · frein arrière</td><td>gâchette droite · gauche</td><td><kbd>S</kbd> ou <kbd>↓</kbd> les deux, <kbd>Maj</kbd> l'arrière seul</td></tr>
+          <tr><td>Se comprimer puis sauter</td><td><kbd>A</kbd> (maintenir, relâcher)</td><td><kbd>Espace</kbd> (maintenir, relâcher)</td></tr>
+          <tr><td>Whip : coucher le vélo (en l'air)</td><td>stick gauche ↔</td><td><kbd>Q</kbd> <kbd>D</kbd> (sans <kbd>Espace</kbd>)</td></tr>
+          <tr><td>Figure (en l'air)</td><td><kbd>A</kbd> maintenu + stick : ↓ backflip, ↑ frontflip, ↔ 360</td><td><kbd>Espace</kbd> maintenu + <kbd>A</kbd> backflip, <kbd>E</kbd> frontflip, <kbd>Q</kbd> <kbd>D</kbd> 360</td></tr>
+          <tr><td>Pédaler</td><td><kbd>X</kbd> ou <kbd>RB</kbd></td><td><kbd>Z</kbd> ou <kbd>↑</kbd></td></tr>
+          <tr><td>Regarder autour</td><td>stick droit</td><td></td></tr>
+          <tr><td>Repartir du dernier point</td><td><kbd>Y</kbd> ou <kbd>B</kbd></td><td><kbd>R</kbd></td></tr>
+          <tr><td>Menu (met la manche en pause)</td><td><kbd>Start</kbd></td><td><kbd>Échap</kbd> ou <kbd>H</kbd></td></tr>
+          <tr><td>Recommencer la manche</td><td>dans le menu</td><td><kbd>Entrée</kbd></td></tr>
+          <tr><td>Vue extérieure · fantôme du record</td><td><kbd>Select</kbd></td><td><kbd>C</kbd> · <kbd>F</kbd></td></tr>
+          <tr><td>Changer de mode (avant le départ)</td><td><kbd>LB</kbd></td><td><kbd>M</kbd></td></tr>
+          <tr><td>Départ en ligne ou contre la montre</td><td></td><td><kbd>N</kbd></td></tr>
+          <tr><td>Réglages avancés · pilote automatique</td><td></td><td><kbd>G</kbd> · <kbd>P</kbd></td></tr>
+        </table>
+        <div class="tips">Conseils de pilote : freine avant le virage, pas dedans. Recule ton poids dans les pentes raides et quand tu freines fort. Les virages relevés se prennent bien plus vite que les plats. Comprime-toi avant une bosse et relâche au sommet pour sauter plus loin. Ne freine pas en l'air : la roue se bloque et tu atterris en glissant.<br>Whip : en l'air, pousse le stick sur le côté pour coucher le vélo comme les pros, et relâche-le avant de te poser ; en Ultra-réaliste, posé encore couché, tu tombes.<br>Figures : le saut d'arrivée est taillé pour (plus d'une seconde en l'air). Groupé, tu tournes plus vite ; lâche le bouton pour t'ouvrir et ralentir la rotation avant de te poser. En Normal, le pilote finit la rotation si tu as lâché au bon moment ; en Ultra-réaliste, c'est à toi de l'arrêter (stick dans l'autre sens, toujours groupé) et de te poser droit.</div>
+      </section>
+      <section data-panel="options" class="hidden">
+        <h2>Graphismes</h2>
+        <div class="seg"><button data-quality="haute">Élevés</button><button data-quality="basse">Légers</button></div>
+        <p class="blurb">Légers : moins de plantes en 3D et plus près, pas d'ombres sur la végétation, une seule photo par sol. À choisir si l'image saccade (la piste se recharge).</p>
+        <h2>Caméra</h2>
+        <div class="seg"><button data-cam="fp">Casque</button><button data-cam="chase">Extérieure</button></div>
+        <h2>Son</h2>
+        <div class="sliders">
+          <label>Volume<input type="range" min="0" max="1.5" step="0.05" data-sound="master" /></label>
+          <label>Le vélo<input type="range" min="0" max="2" step="0.05" data-sound="bike" /></label>
+          <label>L'ambiance<input type="range" min="0" max="2" step="0.05" data-sound="ambience" /></label>
+          <label>Le public<input type="range" min="0" max="2" step="0.05" data-sound="crowd" /></label>
+        </div>
+        <h2>Réglages avancés</h2>
+        <div class="seg"><button id="mAdvanced">Suspension, pneus, pilote, caméra… (G)</button></div>
+      </section>
     </div>
   </div>
   <div id="results" class="screen hidden">
@@ -193,6 +292,7 @@
       <div id="resDelta" style="font-weight:800;font-size:18px"></div>
       <div id="resRows" style="margin-top:14px"></div>
       <div class="go" id="resGo">Entrée ou Start : nouvelle manche · F : affronter ton fantôme</div>
+      <div class="resBtns"><button id="resAgain" class="main">Nouvelle manche</button><button id="resMenu">Menu</button></div>
       <div class="olRow hidden" id="resOnline" style="margin-top:12px;display:flex;gap:10px;align-items:center"><button id="olAgain" class="main">Nouvelle course</button><span id="olAgainInfo" style="font-size:13px;color:rgba(255,255,255,.75)"></span></div>
     </div>
   </div>

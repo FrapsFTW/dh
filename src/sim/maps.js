@@ -21,6 +21,9 @@ const softplus = (v) => (v > 20 ? v : Math.log1p(Math.exp(v)));
 const foret = {
   id: 'foret',
   name: 'La Forêt',
+  // (le menu : le genre de la piste, sa longueur et sa durée)
+  tag: 'Forêt · technique',
+  stats: '884 m · 1 min 20',
   blurb: '884 m, 181 m de dénivelé, environ 1 min 20. Courte et dense, en forêt : épingles, racines, pierrier, drop, road gap.',
   control: [
     [0, 34], [0, 18], [0, -20], [3, -55], [16, -80], [40, -92], [72, -100], [96, -110], [104, -124], [96, -137],
@@ -122,6 +125,9 @@ export function distToPolyline(pts, x, z) {
 const alpes = {
   id: 'alpes',
   name: 'La Grande Combe',
+  // (le menu : le genre de la piste, sa longueur et sa durée)
+  tag: 'Haute montagne · longue',
+  stats: '2,3 km · 3 min 30',
   blurb: "2,3 km, 450 m de dénivelé, plus de 3 min 30. En haut, la crête au-dessus des arbres, la dalle, le grand pierrier et les lacets ; puis le toboggan dans les racines et le pont du torrent ; en bas, l'autoroute du bike park et ses sauts.",
   control: ALP_CONTROL,
   creek: CREEK,
@@ -264,6 +270,9 @@ const AV_COARSE = AV_CONTROL.filter((_, i) => i % 3 === 0);
 const avalanche = {
   id: 'avalanche',
   name: "L'Avalanche",
+  // (le menu : le genre de la piste, sa longueur et sa durée)
+  tag: 'Glacier · départ en ligne',
+  stats: '5,3 km · 7 min',
   blurb: "5,3 km, plus de 1 000 m de dénivelé, environ 7 minutes. Départ en ligne sur le glacier, l'entonnoir, les pierriers, le balcon et sa remontée, six épingles, le bois et son bike park, la ruelle du village.",
   control: AV_CONTROL,
   creek: AV_CREEK,
@@ -412,6 +421,9 @@ const BP_LIFT = [[-48, -1052], [52, 22]];
 const bikepark = {
   id: 'bikepark',
   name: 'Le Bike Park',
+  // (le menu : le genre de la piste, sa longueur et sa durée)
+  tag: 'Bike park · gros sauts',
+  stats: '1,2 km · 1 min 40',
   blurb: "1,2 km, environ 1 min 40, comme la A-Line de Whistler : une piste de ski taillée dans une forêt de douglas, le télésiège au-dessus, des berms bordés de filets. Des modules de toutes les formes : dalle de granit, kicker en bois, table, step-up, step-down, passerelle North Shore perchée, gap en bois, doubles, gap du ruisseau, drop du rocher, drop en bois, road gap, et le Big One devant l'arrivée. En l'air, couche le vélo (whip).",
   lift: BP_LIFT,
   scenery: 'bikepark',
@@ -555,6 +567,9 @@ const SINGLE_CONTROL = (() => {
 const single = {
   id: 'single',
   name: 'Le Single',
+  // (le menu : le genre de la piste, sa longueur et sa durée)
+  tag: 'Riviera · sentier étroit',
+  stats: '550 m · 1 min 10',
   blurb: "Environ 550 m, 1 min 10. Un sentier de la Riviera, comme à Finale Ligure : terre rouge, calcaire blanc, pins maritimes et chênes verts, la mer en contrebas. À peine plus large qu'un guidon, sept épingles entre les murets de pierre sèche : racines, dalle calcaire, pierrier, une petite marche, des marches de pierre.",
   control: SINGLE_CONTROL,
   scenery: 'riviera',

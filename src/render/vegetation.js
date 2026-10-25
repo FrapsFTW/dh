@@ -12,13 +12,13 @@ import { TRAIL_HALF } from '../sim/track.js';
 import { rockGeometry, rockMaterial } from './rocks.js';
 import { bakeImpostors } from './plants.js';
 
-const TILE = 80, TILE_NEAR = 40;
+const TILE = 80, TILE_NEAR = 24;
 
 // Les espèces scannées (public/plantes) : l'échelle de chacune (les scans sont à la taille de la plante scannée, souvent
 // jeune) ; big : elle porte une ombre ; wide : elle est large et à hauteur de guidon (on la garde derrière la rubalise,
 // hors de la figure du pilote).
 export const SPECIES = {
-  fougere: { scale: [1.5, 2.3], big: true },
+  fougere: { scale: [1.5, 2.3], big: true, shadow: true },
   herbe: { scale: [1.8, 2.8] },
   'herbe-seche': { scale: [2, 3.1] },
   pissenlit: { scale: [1.8, 2.6] },
@@ -29,7 +29,7 @@ export const SPECIES = {
   oseille: { scale: [3.5, 5] },
   arbrisseau: { scale: [1.6, 2.5], big: true },
   myrtille: { scale: [2.4, 3.4] },
-  myrte: { scale: [0.8, 1.3], big: true, wide: true },
+  myrte: { scale: [0.9, 1.5], big: true, wide: true, shadow: true },
   bruyere: { scale: [1.2, 1.9], big: true, wide: true },
   gazania: { scale: [1.6, 2.3] },
 };
@@ -421,7 +421,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
   const tuft = tuftGeometry();
   // Les plantes scannées : chaque variante en 3D de près (jusqu'à NEAR mètres, NEAR_BIG pour les grandes), et au loin
   // une carte, toutes espèces dans le même atlas (une seule instance par zone).
-  const NEAR = { value: low ? 18 : 28 }, NEAR_BIG = { value: low ? 28 : 45 };
+  const NEAR = { value: low ? 16 : 22 }, NEAR_BIG = { value: low ? 24 : 36 };
   const species = {};
   let atlas = null;
   for (const name of floraSpecies(flora)) if (plants[name] && renderer) species[name] = plants[name];
@@ -430,7 +430,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     for (const [name, sp] of Object.entries(species)) {
       const big = !!SPECIES[name].big;
       const mat = windMaterial(sp.map, sunDir, { mode: 'plante', near: big ? NEAR_BIG : NEAR, normalUp: /herbe/.test(name) ? 0.85 : 0.45 });
-      sp.variants.forEach((v, i) => { kinds[`${name}#${i}`] = { geometry: v.geometry, material: mat, within: big ? NEAR_BIG : NEAR, castShadow: big && !low }; });
+      sp.variants.forEach((v, i) => { kinds[`${name}#${i}`] = { geometry: v.geometry, material: mat, within: big ? NEAR_BIG : NEAR, castShadow: !!SPECIES[name].shadow && !low }; });
     }
     kinds.imposteurs = { geometry: tuft, material: windMaterial(atlas.texture, sunDir, { mode: 'imposteur', near: NEAR, nearBig: NEAR_BIG, grid: new THREE.Vector2(atlas.cols, atlas.rows) }), near: true, beyond: NEAR };
   }
@@ -528,8 +528,9 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
         if (Number.isFinite(nr.dist) && nr.dist < (SPECIES[kind].wide ? track.tapeAt(nr.s) + 0.3 + reach : edgeAt(nr.s) + reach * 0.5)) continue;
         q.setFromAxisAngle(up, rand() * Math.PI * 2);
         p.set(x1, y1 - 0.02, z1);
-        // (de près, par tronçons de 40 m de piste : c'est le long de la piste qu'elles sont ; plus loin, par carrés)
-        nearTiles.add(`${kind}#${v}`, x1, z1, m4.compose(p, q, s.setScalar(size)), col, null, nr.dist < 25 ? `s${Math.floor(nr.s / 40)}` : null);
+        // (de près, par tronçons de 20 m de piste : c'est le long de la piste qu'elles sont ; plus loin, par carrés. Un
+        // tronçon se dessine en entier dès qu'il approche : plus il est court, moins on calcule de plantes pour rien)
+        nearTiles.add(`${kind}#${v}`, x1, z1, m4.compose(p, q, s.setScalar(size)), col, null, nr.dist < 25 ? `s${Math.floor(nr.s / 20)}` : null);
         tiles.add('imposteurs', x1, z1, m4.compose(p, q, s.set(V.w * size, V.h * size, V.w * size)), col, [V.cell, SPECIES[kind].big ? 1 : 0]);
         counts[kind] = (counts[kind] || 0) + 1;
       }
