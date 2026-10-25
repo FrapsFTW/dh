@@ -8,7 +8,7 @@ import { MODES, MODE_IDS, modeParams } from './sim/modes.js';
 import { MAPS, MAP_IDS, distToPolyline } from './sim/maps.js';
 import { autopilot } from './sim/autopilot.js';
 import { Input } from './input.js';
-import { Sound } from './audio.js';
+import { Sound, SOUND_SETTINGS } from './audio.js';
 import { createScene } from './render/scene.js';
 import { loadGroundTextures } from './render/groundTextures.js';
 import { loadMassif } from './render/range.js';
@@ -178,6 +178,11 @@ fFx.add(SPEED_FX, 'to', 30, 90, 1).name('Au maximum à (km/h)');
 fFx.add(SPEED_FX, 'blur', 0, 2, 0.05).name('Flou sur les bords');
 fFx.add(SPEED_FX, 'aberration', 0, 2, 0.05).name('Aberration chromatique');
 fFx.add(SPEED_FX, 'tunnel', 0, 2, 0.05).name('Vision en tunnel');
+const fSound = gui.addFolder('Son');
+fSound.add(SOUND_SETTINGS, 'master', 0, 1.5, 0.05).name('Volume');
+fSound.add(SOUND_SETTINGS, 'bike', 0, 2, 0.05).name('Le vélo');
+fSound.add(SOUND_SETTINGS, 'ambience', 0, 2, 0.05).name("L'ambiance");
+fSound.add(SOUND_SETTINGS, 'crowd', 0, 2, 0.05).name('Le public');
 gui.add({ reset() { Object.assign(P, modeParams(mode)); gui.controllersRecursive().forEach((c) => c.updateDisplay()); } }, 'reset').name('Valeurs du mode');
 gui.close();
 gui.hide();
@@ -185,6 +190,7 @@ gui.hide();
 // ----- État du jeu -----
 const input = new Input();
 const sound = new Sound();
+sound.setTrack(track);
 let auto = params.has('autopilot');
 let phase = auto || params.has('depart') ? 'ride' : 'hut'; // hut (dans la cabane, ou sur la grille) → countdown → ride → finished
 let countdown = 0, lastBeep = 0;
@@ -401,6 +407,19 @@ function onSplit() {
   while (box.children.length > 7) box.removeChild(box.firstChild);
 }
 
+/** De quel côté coule le torrent, pour le son : de -1 (à gauche de la caméra) à 1 (à droite). */
+function creekSide(creek, pos) {
+  let best = null, bd = Infinity;
+  for (let i = 0; i + 1 < creek.length; i++) {
+    const [ax, az] = creek[i], [bx, bz] = creek[i + 1], dx = bx - ax, dz = bz - az;
+    const u = Math.max(0, Math.min(1, ((pos.x - ax) * dx + (pos.z - az) * dz) / (dx * dx + dz * dz)));
+    const x = ax + dx * u, z = az + dz * u, d = Math.hypot(x - pos.x, z - pos.z);
+    if (d < bd) { bd = d; best = [x, z]; }
+  }
+  const e = camera.matrixWorld.elements, l = bd || 1;
+  return Math.max(-1, Math.min(1, ((best[0] - pos.x) * e[0] + (best[1] - pos.z) * e[2]) / l)) * 0.8;
+}
+
 // ----- Le classement du départ en ligne -----
 const shortName = (name) => `${name[0]}. ${name.split(' ').slice(1).join(' ')}`;
 const fmtGap = (g) => `${g < 0 ? '−' : '+'}${Math.abs(g).toFixed(1)}`;
@@ -435,6 +454,7 @@ function updateRank(t, dt) {
 }
 
 function onFinish() {
+  sound.finish();
   const race = sim.race;
   const record = !best || race.time < best.time;
   recordThisRun = record && !auto;
@@ -780,7 +800,7 @@ function frame(now) {
 
   // Chute, sortie de piste : on repart du dernier point.
   const crash = sim.bike.crashed;
-  if (crash && crash !== shownCrash) { shownCrash = crash; showMessage(`${crash.reason} !`, 'Retour au dernier point…', 1.6); sound.thump(1.2); }
+  if (crash && crash !== shownCrash) { shownCrash = crash; showMessage(`${crash.reason} !`, 'Retour au dernier point…', 1.6); sound.crash(crash.reason); }
   if (crash && crash.t > 1.6) { sim.respawn(); rig.reset(); }
   if (race.out && !crash) { showMessage('Hors piste', 'Il faut rester entre les rubalises', 1.8); sim.respawn(); rig.reset(); }
   if (race.missed) showMessage('Porte manquée', 'R ou Y pour repartir du dernier point', 0.3);
@@ -838,10 +858,13 @@ function frame(now) {
   world.update(st.position, camera, clock);
   drawStartClock();
   drawFinishScreen(dt);
-  const nearFinish = Math.max(0, 1 - Math.abs(race.s - track.sFinish) / 70);
+  // Le son : le torrent (de quel côté il coule), les rivaux et les autres joueurs qu'on entend passer.
   const creek = track.map.creek;
   const nearWater = creek ? 1 - THREE.MathUtils.smoothstep(distToPolyline(creek, st.position.x, st.position.z), 6, 45) : 0;
-  sound.update(st, nearFinish, dt, nearWater);
+  const others = [];
+  if (peloton && pelotonOn) for (const R of peloton.riders) others.push(R.state);
+  if (net) for (const R of remote.riders.values()) if (R.model.group.visible && R.buf.length) others.push(R.state);
+  sound.update(st, { camera, s: race.s, phase, nearWater, waterDir: nearWater > 0 ? creekSide(creek, st.position) : null, others, dt });
   particles.update(camera, st.velocity, dt);
   if (!stage.noRender) post.render(st.speed, dt);
 
@@ -876,7 +899,7 @@ if (!film) requestAnimationFrame(frame);
 
 // Pour les captures automatiques (tools/shots.mjs).
 window.__game = {
-  sim, rig, world, camera,
+  sim, rig, world, camera, sound,
   setAutopilot(v) { auto = v; if (phase === 'hut') phase = 'ride'; },
   setMode,
   peloton,

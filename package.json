@@ -10,7 +10,8 @@
     "test": "node --test tests/sim.test.mjs tests/salon.test.mjs",
     "shots": "node tools/shots.mjs",
     "trace": "node tools/trace.mjs auto 200",
-    "prepare-bike": "node tools/prepare-bike.mjs 20261018170123_b442c697.glb"
+    "prepare-bike": "node tools/prepare-bike.mjs 20261018170123_b442c697.glb",
+    "sons": "node tools/sons.mjs"
   },
   "dependencies": {
     "@dgreenheck/ez-tree": "^1.1.0",
@@ -19,10 +20,12 @@
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@breezystack/lamejs": "1.2.7",
     "@gltf-transform/core": "4.5.1",
     "@gltf-transform/extensions": "4.5.1",
     "@gltf-transform/functions": "4.5.1",
     "meshoptimizer": "1.3.0",
+    "mpg123-decoder": "1.0.3",
     "playwright-core": "1.64.1",
     "sharp": "0.35.5",
     "vite": "8.3.4"

@@ -291,7 +291,21 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
   (`public/models/bike-lod.glb`, fait par `tools/bike-lod.mjs`), en formes simples au loin, noms des plus proches.
 - `src/render/arms.js` : les bras et les mains du pilote, détaillés (`public/models/bras.glb`) : posés sur le cintre à
   chaque image, doigts refermés sur les poignées, maillot et gants peints d'après des zones marquées sur le modèle.
-- `src/audio.js` : le son, entièrement synthétisé.
+- `src/audio.js` : le son. Des prises réelles (CC0, `public/sons/`) pour ce qui se reconnaît à l'oreille, de la synthèse
+  pour ce qui suit la physique de près :
+  - le roulement : une prise de terre et une de graviers, mêlées selon le sol de chaque roue, plus fortes et plus
+    brillantes avec la vitesse, muettes dès qu'on décolle ; les planches et les pavés grondent, la neige souffle ;
+  - la roue libre, clic par clic : chaque clic est un vrai clic, déclenché à la cadence d'un moyeu à 36 dents à la
+    vitesse de la roue arrière ; elle se tait quand on pédale ;
+  - la chaîne qui claque sur la base (dans les cailloux, sur les chocs), les chocs de suspension (un corps grave et
+    un craquement), la réception d'un saut, le dérapage, le grondement des disques, la chute ;
+  - le vent : un souffle par oreille dont la couleur monte avec la vitesse, et le battement grave dans le casque ;
+  - l'ambiance de chaque piste et de chaque altitude : la forêt, l'alpage et ses cloches, le vent du glacier, la côte
+    (cigales, mer, mouettes), le télésiège, le torrent du côté où il coule, les cloches du village ; elle s'efface
+    sous le vent quand on va vite ;
+  - le public, qui enfle à l'approche, cloches et cornes de chaque côté ; les rivaux qui passent tout près ;
+  - une réverbération par piste (courte en forêt, longue en montagne) ; un compresseur et un limiteur : rien ne
+    sature. Les volumes se règlent avec G (Son).
 
 ## Le vélo
 
@@ -329,5 +343,7 @@ node tools/film.mjs [plan…]   # tourne des plans du peloton image par image (s
   aerial_grass_rock, forest_leaves_04, forest_ground_04, rocky_trail, rock_face_03, gray_rocks, snow_02,
   cobblestone_05, castle_wall_slates, white_rough_plaster, roof_slates_03, weathered_planks), assemblées par
   `tools/ground-textures.mjs`.
+- Les sons : des prises CC0 de [Freesound](https://freesound.org), préparées par `tools/sons.mjs` (boucles sans
+  couture, niveaux) ; leurs auteurs sont dans `public/sons/CREDITS.txt`.
 - L'érosion de `tools/massif.mjs` (désactivée par défaut, `DROPS=700000`) suit Hans Theobald Beyer, « Implementation
   of a method for hydraulic erosion » (2015).
