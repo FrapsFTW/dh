@@ -440,6 +440,19 @@ test('Le Bike Park : des sauts de toutes les formes, comme dans un vrai bike par
   // Le step-up : on se pose plus haut qu'on n'a décollé.
   const up = jumps.find((f) => f.name === 'step-up');
   assert.ok(y(up.lipS + up.knuckle + 1) > y(up.lipS) + 0.5, 'le step-up');
+  // Le gap du ruisseau : le fond du trou est à plat (le lit de l'eau).
+  const creek = jumps.find((f) => f.look === 'ruisseau');
+  assert.ok(creek && Math.abs(y(creek.lipS + creek.knuckle / 2 - 0.5) - y(creek.lipS + creek.knuckle / 2 + 0.5)) < 0.02, 'le lit du ruisseau');
+  // Le drop du rocher : une lèvre de granit.
+  const rock = jumps.find((f) => f.kind === 'drop' && !f.look);
+  assert.equal(at(rock.lipS - 1), 'roche', 'la lèvre du drop du rocher');
+  // La dalle de granit, et la passerelle North Shore : en planches, perchée à plus d'un mètre au-dessus du sol voisin, étroite.
+  const slab = t.features.find((f) => f.type === 'slab');
+  assert.equal(at((slab.a + slab.b) / 2), 'roche', 'la dalle de granit');
+  const shore = t.bridges.find((f) => f.style === 'shore'), sm = (shore.a + shore.b) / 2;
+  assert.equal(at(sm), 'bois', 'la passerelle est en planches');
+  assert.ok(t.trailY(sm, 0) - t.trailY(sm, shore.half + 1.2) > 1, 'la passerelle est perchée');
+  assert.ok(shore.half * 2 < 2.5, 'la passerelle est étroite');
 });
 
 test('Le Single : une dalle calcaire et des marches de pierre', () => {

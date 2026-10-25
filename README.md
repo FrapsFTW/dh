@@ -182,15 +182,18 @@ de la côte Pacifique : une piste de ski taillée dans une forêt de douglas de 
 Des berms (des virages relevés, qu'on prend vite) bordés de filets orange, un panneau avant chaque saut, et des sauts
 tous différents :
 
-- le kicker en bois (une lèvre de planches sur pilotis), une table, un step-up (on se pose plus haut qu'on n'a
-  décollé) ;
-- un step-down, le gap en bois façon North Shore (lèvre et réception en planches, un trou entre les deux) ;
-- trois doubles, deux buttes de terre et un trou creusé entre elles ;
-- des bosses, le drop en bois (un tablier sur pilotis qui finit dans le vide), le road gap ;
+- une dalle de granit à dévaler dès la sortie de la cabane, le kicker en bois (une lèvre de planches sur pilotis), une
+  table, un step-up (on se pose plus haut qu'on n'a décollé) ;
+- un step-down, la passerelle North Shore (un tablier de planches de 2,2 m de large, perché à 1,2 m, sans
+  garde-corps : il faut rester droit), le gap en bois (lèvre et réception en planches, un trou entre les deux) ;
+- deux doubles, deux buttes de terre et un trou creusé entre elles, puis le gap du ruisseau (de l'eau qui court au
+  fond du trou) ;
+- le drop du rocher (une lèvre de granit), des bosses, le drop en bois (un tablier sur pilotis qui finit dans le
+  vide), le road gap ;
 - le Big One devant l'arrivée, le plus gros saut du jeu (plus d'une seconde en l'air), pour un backflip, un 360 ou
   un gros whip ; la foule et la tour du speaker du concours de whips. En bas, les chalets de la station.
 
-À côté de la ligne, une passerelle North Shore et son wallride.
+À côté de la ligne, une autre passerelle North Shore et son wallride, pour le décor.
 
 **Le Single** (environ 550 m, 1 min 10, trois intermédiaires), comme à Finale Ligure, sur la Riviera : une pente à
 38 % au-dessus de la mer, de la terre rouge, du calcaire blanc, des pins maritimes et des chênes verts, le maquis
@@ -277,7 +280,9 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
   pierriers) et ne suit le vélo que pendant une vraie figure. L'affichage est interpolé entre deux pas de physique
   (`sim.renderState`), pour rester fluide sur un écran à 144 Hz.
 - `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, panneaux, le pont
-  et le torrent ; le public, en quatre postures (bras levé, téléphone tendu…) ; les maisons du village en photos de
+  et le torrent ; le public (`src/render/crowd.js`) : des femmes et des hommes en treize poses
+  (debout, mains sur les hanches, la main en visière, le bras levé qui salue, assis dans l'herbe, le poing qui
+  encourage…), chacun habillé, coiffé et teint à sa façon, certains qui sautillent, le bras qui salue en mouvement ; les maisons du village en photos de
   pierre, de crépi, de lauze et de bois.
 - `src/render/woodwork.js` : les modules en bois (`look: 'bois'`) : tablier de planches qui suit le profil, joues,
   pilotis, front du drop.
@@ -349,6 +354,8 @@ node tools/film.mjs [plan…]   # tourne des plans du peloton image par image (s
   `tools/ground-textures.mjs`.
 - Les plantes : des scans CC0 de [Poly Haven](https://polyhaven.com), préparés par `tools/plantes.mjs` ; leurs auteurs
   sont dans `public/plantes/CREDITS.txt`.
+- Le public : les [Background Posed Humans](https://quaternius.com/packs/backgroundposedhumans.html) de Quaternius
+  (CC0), coiffés et préparés par `tools/public.mjs` (`npm run public`).
 - Les sons : des prises CC0 de [Freesound](https://freesound.org), préparées par `tools/sons.mjs` (boucles sans
   couture, niveaux) ; leurs auteurs sont dans `public/sons/CREDITS.txt`.
 - L'érosion de `tools/massif.mjs` (désactivée par défaut, `DROPS=700000`) suit Hans Theobald Beyer, « Implementation

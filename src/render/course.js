@@ -11,6 +11,7 @@ import { NOISE_GLSL } from './glsl.js';
 import { createLift } from './lift.js';
 import { createScenery } from './scenery.js';
 import { createWoodwork } from './woodwork.js';
+import { crowdMaterial } from './crowd.js';
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
@@ -127,7 +128,7 @@ function personGeometry(pose, look) {
   return mergeGeometries(parts);
 }
 
-export function createCourse(sim, sunDir, { groundTextures = null } = {}) {
+export function createCourse(sim, sunDir, { groundTextures = null, crowd = null } = {}) {
   const { track } = sim;
   const group = new THREE.Group();
   group.name = 'course';
@@ -167,7 +168,8 @@ transformed.y += w * 0.01 * flex;`);
   const tapePos = [], tapeUV = [], tapeFlex = [], tapeSide = [], tapeIdx = [];
   const sEnd = arena ? arena.a + 4 : track.length;
   // Sur un pont, ce sont ses garde-corps : la rubalise s'interrompt.
-  const nearBridge = (s) => track.bridges.some((f) => s > f.a - 3 && s < f.b + 3);
+  // (une passerelle North Shore n'en a pas : la rubalise continue, au sol, de part et d'autre)
+  const nearBridge = (s) => track.bridges.some((f) => f.style !== 'shore' && s > f.a - 3 && s < f.b + 3);
   for (const sideSign of [-1, 1]) {
     let len = 0, prev = null, base = tapePos.length / 3;
     const spacing = 4;
@@ -285,8 +287,8 @@ transformed.y += w * 0.01 * flex;`);
     rootGeos.push(new THREE.TubeGeometry(curve, pts.length * 2, r.r * 0.85, 6, false));
   }
   if (rootGeos.length) {
-    const roots = new THREE.Mesh(mergeGeometries(rootGeos), new THREE.MeshStandardMaterial({ color: lin('#5b4632'), roughness: 0.8 }));
-    roots.castShadow = roots.receiveShadow = true;
+    // (sans ombres : les racines affleurent à peine, l'ombre du sol posé sur elles les faisait virer au noir)
+    const roots = new THREE.Mesh(mergeGeometries(rootGeos), new THREE.MeshStandardMaterial({ color: lin('#6e553d'), roughness: 0.75 }));
     group.add(roots);
   }
 
@@ -341,6 +343,58 @@ transformed.y += w * 0.01 * flex;`);
     group.add(road);
   }
 
+  // ---------- Le gap du ruisseau (look 'ruisseau') : de l'eau au fond du trou, des galets sur les berges ----------
+  for (const f of track.features.filter((f) => f.type === 'jump' && f.look === 'ruisseau')) {
+    const s0 = f.lipS + 0.4, s1 = f.lipS + f.knuckle - 0.4;
+    let low = Infinity;
+    for (let s = s0; s <= s1; s += 0.25) low = Math.min(low, track.trailY(s, 0));
+    const level = low + 0.3, W = TRAIL_HALF + 7;
+    const wpos = [], wuv = [], widx = [];
+    const nS = 12, nU = 24;
+    for (let i = 0; i <= nS; i++) {
+      for (let j = 0; j <= nU; j++) {
+        const ss = s0 + ((s1 - s0) * i) / nS, u = -W + (2 * W * j) / nU, fr = frameAt(track, ss, u);
+        wpos.push(fr.pos.x, level, fr.pos.z); wuv.push(u / 2, ss / 2);
+        if (i < nS && j < nU) { const k = i * (nU + 1) + j; widx.push(k, k + nU + 1, k + 1, k + 1, k + nU + 1, k + nU + 2); }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(wuv, 2));
+    g.setIndex(widx);
+    g.computeVertexNormals();
+    // (face vers le ciel, quel que soit le sens de la piste)
+    if (g.attributes.normal.getY(0) < 0) { g.setIndex([...g.index.array].reverse()); g.computeVertexNormals(); }
+    // L'eau : des filets d'écume qui filent dans le sens du courant (en travers de la piste).
+    const flow = canvasTex(256, 256, (ctx, w2, h2) => {
+      ctx.fillStyle = '#4f7684'; ctx.fillRect(0, 0, w2, h2);
+      const r = rng(77);
+      for (let i = 0; i < 260; i++) {
+        const y = r() * h2, x = r() * w2, l = 20 + r() * 90, a = 0.08 + r() * 0.3;
+        ctx.strokeStyle = `rgba(225,238,242,${a})`; ctx.lineWidth = 0.6 + r() * 2.2;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x + l * 0.3, y + (r() - 0.5) * 6, x + l * 0.7, y + (r() - 0.5) * 6, x + l, y); ctx.stroke();
+      }
+    }, true).tex;
+    const waterMat = new THREE.MeshStandardMaterial({ map: flow, roughness: 0.12, metalness: 0.05 });
+    dynamic.push((t) => { flow.offset.x = -t * 0.45; });
+    const water = new THREE.Mesh(g, waterMat);
+    water.name = 'ruisseau';
+    water.receiveShadow = true;
+    group.add(water);
+    // Des galets mouillés au bord de l'eau, et quelques blocs dans le lit.
+    const wet = new THREE.MeshStandardMaterial({ color: lin('#8a877e'), roughness: 0.4 });
+    for (let k = 0; k < 26; k++) {
+      const ss = s0 + rand() * (s1 - s0), u = (rand() * 2 - 1) * W, fr = frameAt(track, ss, u);
+      const r = 0.15 + rand() * (Math.abs(u) > TRAIL_HALF ? 0.5 : 0.25);
+      const m = new THREE.Mesh(rockGeo, wet);
+      m.position.set(fr.pos.x, Math.max(level - r * 0.2, track.groundY(fr.pos.x, fr.pos.z) - r * 0.4), fr.pos.z);
+      m.scale.set(r, r * 0.55, r * 0.85);
+      m.rotation.y = rand() * 6;
+      m.castShadow = m.receiveShadow = true;
+      group.add(m);
+    }
+  }
+
   // ---------- Les ponts : tablier en planches, garde-corps, pieux jusqu'au lit du torrent, culées en pierre ----------
   const plankTex = canvasTex(256, 256, (ctx, w2, h2) => {
     for (let i = 0; i < 8; i++) {
@@ -351,9 +405,51 @@ transformed.y += w * 0.01 * flex;`);
       for (const x of [18, w2 - 22]) { ctx.beginPath(); ctx.arc(x, i * 32 + 15, 2.2, 0, 7); ctx.fill(); } // les clous
     }
   }, true).tex;
+  /**
+   * La charpente d'une passerelle North Shore : des poteaux tous les 2 m, de chaque côté, jusqu'au sol, une traverse
+   * sous le tablier à chaque paire, et sur les flancs des planches posées debout (le bardage) qui cachent le remblai.
+   */
+  function shoreFrame(f, HALF, deckY) {
+    const frame = new THREE.Group();
+    const posts = [], beams = [];
+    const spos = [], suv = [], sidx = [];
+    for (const side of [-1, 1]) {
+      let k = 0;
+      for (let s = f.a + 0.3; s <= f.b - 0.2; s += 0.5, k++) {
+        const fr = frameAt(track, s, side * (HALF - 0.02)), top = deckY(s, side * HALF) - 0.3;
+        const out = frameAt(track, s, side * (HALF + 0.9)), bottom = track.groundY(out.pos.x, out.pos.z) - 0.1;
+        spos.push(fr.pos.x, top, fr.pos.z, fr.pos.x, Math.min(top - 0.05, bottom), fr.pos.z);
+        suv.push(s / 0.9, 0, s / 0.9, (top - bottom) / 2);
+        if (k > 0) { const o = spos.length / 3 - 4; sidx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
+      }
+    }
+    for (let s = f.a + 1; s <= f.b - 0.5; s += 2) {
+      for (const side of [-1, 1]) {
+        const fr = frameAt(track, s, side * (HALF + 0.08));
+        const top = deckY(s, side * HALF) - 0.05, bottom = track.groundY(fr.pos.x, fr.pos.z) - 0.3;
+        const h = Math.max(0.3, top - bottom);
+        posts.push(m4.compose(p.set(fr.pos.x, bottom + h / 2, fr.pos.z), q.setFromAxisAngle(up, fr.yaw), sc.set(1, h, 1)).clone());
+      }
+      const fr = frameAt(track, s);
+      beams.push(m4.compose(p.set(fr.pos.x, deckY(s, 0) - 0.22, fr.pos.z), q.setFromAxisAngle(up, fr.yaw), sc.set(HALF * 2 + 0.3, 1, 1)).clone());
+    }
+    const inst = (geo, list) => { const m = new THREE.InstancedMesh(geo, woodDark, list.length); list.forEach((x, i) => m.setMatrixAt(i, x)); m.castShadow = m.receiveShadow = true; frame.add(m); };
+    inst(new THREE.BoxGeometry(0.14, 1, 0.14), posts);
+    inst(new THREE.BoxGeometry(1, 0.16, 0.16), beams);
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(spos, 3));
+    sg.setAttribute('uv', new THREE.Float32BufferAttribute(suv, 2));
+    sg.setIndex(sidx);
+    sg.computeVertexNormals();
+    const skirt = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ map: plankTex, color: lin('#8a7a66'), roughness: 0.9, side: THREE.DoubleSide }));
+    skirt.castShadow = skirt.receiveShadow = true;
+    frame.add(skirt);
+    return frame;
+  }
   for (const f of track.bridges) {
-    const HALF = 1.9, a = f.a - 1.5, b = f.b + 1.5;
-    const deckY = (s, u) => track.trailY(s, Math.max(-1.7, Math.min(1.7, u))) + 0.05;
+    // (la passerelle North Shore : un tablier étroit sur la piste, de bout en bout, rampes comprises)
+    const shore = f.style === 'shore', HALF = shore ? f.half : 1.9, a = shore ? f.a : f.a - 1.5, b = shore ? f.b : f.b + 1.5;
+    const deckY = (s, u) => track.trailY(s, Math.max(-(HALF - 0.2), Math.min(HALF - 0.2, u))) + 0.05;
     // Le tablier, et ses rives (une poutre de 30 cm de chaque côté).
     const dpos = [], duv = [], didx = [];
     let k = 0;
@@ -375,6 +471,7 @@ transformed.y += w * 0.01 * flex;`);
     const deck = new THREE.Mesh(dgeo, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.85, side: THREE.DoubleSide }));
     deck.castShadow = deck.receiveShadow = true;
     group.add(deck);
+    if (shore) { group.add(shoreFrame(f, HALF, deckY)); continue; }
     // Les garde-corps : un poteau tous les 1,6 m, une main courante et une lisse.
     const posts = [];
     for (const side of [-1, 1]) {
@@ -591,7 +688,7 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
 
   // ---------- L'arrivée : arche gonflable, écran, barrières, public, drapeaux ----------
   const people = [];
-  const addPerson = (pos, faceTo) => people.push({ pos: pos.clone(), yaw: Math.atan2(faceTo.x - pos.x, faceTo.z - pos.z) + (rand() - 0.5) * 0.6, hue: rand() });
+  const addPerson = (pos, faceTo, sit = false) => people.push({ pos: pos.clone(), yaw: Math.atan2(faceTo.x - pos.x, faceTo.z - pos.z) + (rand() - 0.5) * 0.6, hue: rand(), sit });
   {
     const fr = frameAt(track, track.sFinish);
     const arch = new THREE.Group();
@@ -681,7 +778,7 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
       const s = s0 + rand() * (s1 - s0), side = rand() < 0.5 ? -1 : 1;
       const pf = frameAt(track, s, side * (track.tapeAt(s) + 1.2 + rand() * 3.5));
       if (track.treeNear(pf.pos.x, pf.pos.z, 0.5)) continue;
-      addPerson(pf.pos, frameAt(track, s).pos);
+      addPerson(pf.pos, frameAt(track, s).pos, true);
     }
   }
   // ---------- Le départ en ligne : une banderole d'un piquet à l'autre, devant la grille, et du public ----------
@@ -893,43 +990,54 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
   }
 
   {
-    const geos = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => personGeometry(k % 4, k));
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-    mat.userData.time = { value: 0 };
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = mat.userData.time;
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float jacket;')
-        // Seule la veste prend la couleur de chacun.
-        .replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(color.rgb, vColor.rgb, jacket);')
-        .replace('#include <begin_vertex>', `#include <begin_vertex>
+    // Les spectateurs : les vrais modèles (crowd.js) s'ils sont chargés, sinon les silhouettes simples d'ici.
+    const time = { value: 0 };
+    dynamic.push((t) => { time.value = t; });
+    let poses;
+    if (crowd) {
+      const standMat = crowdMaterial(time), sitMat = crowdMaterial(time, { bounce: false });
+      poses = crowd.map((c) => ({ geometry: c.geometry, sitting: c.sitting, material: c.sitting ? sitMat : standMat }));
+    } else {
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = time;
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float jacket;')
+          // Seule la veste prend la couleur de chacun.
+          .replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(color.rgb, vColor.rgb, jacket);')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
 float ph = instanceMatrix[3].x * 1.7 + instanceMatrix[3].z * 2.3;
 transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
 #endif`);
-    };
-    dynamic.push((t) => { mat.userData.time.value = t; });
-    // Des vestes de montagne : quelques couleurs vives, beaucoup de teintes sourdes.
-    const shirts = ['#c8352a', '#2d5e9e', '#e0b23a', '#3f7d4e', '#e8e6df', '#e26a2c', '#5b4b8a', '#26282c', '#7d8a95', '#8a6a4a', '#34536b', '#a33c5c'].map(lin);
+      };
+      poses = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => ({ geometry: personGeometry(k % 4, k), sitting: false, material: mat }));
+    }
+    const standing = poses.map((p, i) => i).filter((i) => !poses[i].sitting);
+    // Des t-shirts et des vestes d'été : quelques couleurs vives, beaucoup de teintes sourdes.
+    const shirts = ['#c8352a', '#2d5e9e', '#e0b23a', '#3f7d4e', '#e8e6df', '#e26a2c', '#5b4b8a', '#26282c', '#7d8a95', '#8a6a4a', '#34536b', '#a33c5c', '#f2f0ea', '#4f8fc0'].map(lin);
     const ZONE = 120, zones = new Map();
-    people.forEach((pp, i) => {
-      const key = `${Math.floor(pp.pos.x / ZONE)}|${Math.floor(pp.pos.z / ZONE)}|${i % geos.length}`;
+    for (const pp of people) {
+      // (assis dans l'herbe, seulement là où on a de la place : aux sauts et aux pierriers)
+      const pose = pp.sit && rand() < 0.3 ? Math.floor(rand() * poses.length) : standing[Math.floor(rand() * standing.length)];
+      const key = `${Math.floor(pp.pos.x / ZONE)}|${Math.floor(pp.pos.z / ZONE)}|${pose}`;
       if (!zones.has(key)) zones.set(key, []);
       zones.get(key).push(pp);
-    });
+    }
     for (const [key, mine] of zones) {
-      const crowd = new THREE.InstancedMesh(geos[+key.split('|')[2]], mat, mine.length);
+      const pose = poses[+key.split('|')[2]];
+      const mesh = new THREE.InstancedMesh(pose.geometry, pose.material, mine.length);
       mine.forEach((pp, i) => {
         q.setFromAxisAngle(up, pp.yaw);
         const sz = 0.92 + rand() * 0.16;
-        crowd.setMatrixAt(i, m4.compose(pp.pos, q, sc.set(sz, sz, sz)));
-        crowd.setColorAt(i, shirts[Math.floor(pp.hue * shirts.length)]);
+        mesh.setMatrixAt(i, m4.compose(pp.pos, q, sc.set(sz, sz, sz)));
+        mesh.setColorAt(i, shirts[Math.floor(pp.hue * shirts.length)]);
       });
-      crowd.castShadow = true;
-      crowd.computeBoundingSphere();
-      crowd.name = 'public';
-      group.add(crowd);
-      nearOnly.push({ mesh: crowd, x: crowd.boundingSphere.center.x, z: crowd.boundingSphere.center.z, range: 350 + crowd.boundingSphere.radius });
+      mesh.castShadow = true;
+      mesh.computeBoundingSphere();
+      mesh.name = 'public';
+      group.add(mesh);
+      nearOnly.push({ mesh, x: mesh.boundingSphere.center.x, z: mesh.boundingSphere.center.z, range: 350 + mesh.boundingSphere.radius });
     }
   }
 

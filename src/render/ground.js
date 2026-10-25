@@ -323,7 +323,9 @@ export function createGround(sim, tex, { low = false } = {}) {
   rg.setIndex(new THREE.BufferAttribute(ribbon.indices, 1));
   const nR = ribbon.positions.length / 3;
   const rForest = new Float32Array(nR), rTrail = new Float32Array(nR * 3), rRocky = new Float32Array(nR), rSlab = new Float32Array(nR);
-  const rocks = track.features.filter((f) => f.type === 'rocks'), slabs = track.features.filter((f) => f.type === 'slab');
+  // (les dalles, et la lèvre de granit d'un drop sans autre habillage)
+  const rocks = track.features.filter((f) => f.type === 'rocks');
+  const slabs = [...track.features.filter((f) => f.type === 'slab'), ...track.features.filter((f) => f.type === 'jump' && f.kind === 'drop' && !f.look).map((f) => ({ a: f.a + 0.5, b: f.lipS + 0.4 }))];
   const jumps = track.features.filter((f) => f.type === 'jump'), rEarth = new Float32Array(nR);
   for (let i = 0; i < nR; i++) {
     const x = ribbon.positions[i * 3], z = ribbon.positions[i * 3 + 2];
@@ -333,6 +335,7 @@ export function createGround(sim, tex, { low = false } = {}) {
     for (const f of rocks) rRocky[i] = Math.max(rRocky[i], smoothstep(f.a - 1, f.a + 2, s) * (1 - smoothstep(f.b - 2, f.b + 1, s)));
     for (const f of slabs) rSlab[i] = Math.max(rSlab[i], smoothstep(f.a - 1, f.a + 1, s) * (1 - smoothstep(f.b - 1, f.b + 1, s)));
     for (const f of jumps) rEarth[i] = Math.max(rEarth[i], smoothstep(f.a - 2, f.a, s) * (1 - smoothstep(f.b - 4, f.b, s)));
+    rEarth[i] *= 1 - rSlab[i];
   }
   rg.setAttribute('forest', new THREE.BufferAttribute(rForest, 1));
   rg.setAttribute('trailInfo', new THREE.BufferAttribute(rTrail, 3));

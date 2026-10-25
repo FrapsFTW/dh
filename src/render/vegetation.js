@@ -494,7 +494,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     } else if (flora === 'epilobe') {
       // La côte Pacifique : un sous-bois de fougères et d'arbrisseaux ; dans la piste de ski, des nappes d'épilobes.
       if (forest > 0.45) { if (r > 0.65) continue; kind = r < 0.32 ? 'fougere' : r < 0.45 ? 'arbrisseau' : r < 0.55 ? 'myrtille' : 'oseille'; }
-      else if (n > 0.6 && r < 0.7) kind = 'epilobe';
+      else if (n > 0.6 && r < 0.3) kind = 'epilobe';
       else kind = r < 0.08 ? 'fougere' : r < 0.14 ? 'arbrisseau' : r < 0.2 ? 'pissenlit' : 'herbe';
     } else if (forest > 0.45) {
       // La forêt des Alpes : des fougères, de l'oseille des bois, des orties et des bardanes au bord des clairières.
@@ -535,7 +535,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
       }
     } else if (kind === 'epilobe') {
       // Les épilobes : des tiges seules, en touffes serrées, de 0,9 à 1,6 m.
-      const n = 4 + Math.floor(rand() * 6);
+      const n = 3 + Math.floor(rand() * 5);
       for (let j = 0; j < n; j++) {
         const x1 = x + (rand() - 0.5) * 1.2, z1 = z + (rand() - 0.5) * 1.2, h = 0.9 + rand() * 0.7;
         const nr = j ? track.nearest(x1, z1, null, 0, 3) : near;

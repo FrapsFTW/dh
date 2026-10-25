@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- Le public (public/models/public.glb) en rang, chaque partie du corps de sa couleur : ?v=face|biais|dos -->
+<html><head><meta charset="utf-8"><style>body{margin:0;background:#9aa3ab}</style></head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+const v = new URLSearchParams(location.search).get('v') || 'face';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556644, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 6, 5); scene.add(sun);
+const COLORS = [0xe0b394, 0x2d5e9e, 0x2a3446, 0x222222, 0x5a3a1e];
+const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync('/public/models/public.glb');
+gltf.scene.updateMatrixWorld(true);
+const meshes = [];
+gltf.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
+const cols = 14;
+meshes.forEach((m, i) => {
+  const g = m.geometry.clone();
+  // (positions quantifiées : en flottants avant de leur appliquer le nœud)
+  for (const n of ['position', 'normal']) {
+    const a = g.attributes[n], arr = new Float32Array(a.count * 3);
+    for (let k = 0; k < a.count; k++) arr.set([a.getX(k), a.getY(k), a.getZ(k)], k * 3);
+    g.setAttribute(n, new THREE.BufferAttribute(arr, 3));
+  }
+  g.applyMatrix4(m.matrixWorld);
+  const part = g.attributes._part, c = new Float32Array(part.count * 3), col = new THREE.Color();
+  for (let k = 0; k < part.count; k++) { col.set(COLORS[Math.round(part.getX(k))]); c.set([col.r, col.g, col.b], k * 3); }
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }));
+  mesh.position.set((i % cols) * 0.9, -Math.floor(i / cols) * 2.1, 0);
+  if (v === 'biais') mesh.rotation.y = 0.8;
+  if (v === 'dos') mesh.rotation.y = Math.PI;
+  scene.add(mesh);
+});
+const cam = new THREE.OrthographicCamera(-0.6, cols * 0.9 - 0.3, 2, -2.3, -10, 10);
+cam.position.set(0, 0, 5);
+renderer.render(scene, cam);
+window.__info = { meshes: meshes.length };
+window.__ready = true;
+</script></body></html>

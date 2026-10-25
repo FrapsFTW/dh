@@ -36,7 +36,7 @@ function skyEnvironment(renderer, atm, clouds) {
   return tex;
 }
 
-export function createScene(sim, { low = false, renderer, groundTextures, massif, plants = {} } = {}) {
+export function createScene(sim, { low = false, renderer, groundTextures, massif, plants = {}, crowd = null } = {}) {
   const { track } = sim;
   const env = track.map.env;
   const SUN_DIR = env.sun ? new THREE.Vector3(...env.sun).normalize() : DEFAULT_SUN;
@@ -80,7 +80,7 @@ export function createScene(sim, { low = false, renderer, groundTextures, massif
   scene.add(vegetation.group);
   const forest = createForest(track, renderer, { low });
   scene.add(forest.group);
-  const course = createCourse(sim, SUN_DIR, { groundTextures });
+  const course = createCourse(sim, SUN_DIR, { groundTextures, crowd });
   scene.add(course.group);
 
   // ----- La mer (env.sea) : une nappe dans chaque scène, au même niveau (la proche cache le relief sous l'eau, la

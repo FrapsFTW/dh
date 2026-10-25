@@ -199,7 +199,7 @@ const alpes = {
         { type: 'brakeBumps', a: cpS[62] - 12, b: cpS[62] + 2 },
         { type: 'rollers', a: seg(64, 65, 0.5), b: seg(65, 66, 0.7), height: 0.5, wave: 9 },
         { type: 'brakeBumps', a: cpS[67] - 12, b: cpS[67] + 2 },
-        { type: 'jump', kind: 'table', name: "saut d'arrivée", a: seg(70, 71, 0.35), lipLen: 5, lipH: 2.2, knuckle: 8, clear: 1.6, speed: 10, touchLen: 3, lineLen: 10, landFlatten: 0.3, runout: 20 },
+        { type: 'jump', kind: 'table', name: "saut d'arrivée", a: seg(70, 71, 0.35), lipLen: 5, lipH: 2.2, knuckle: 8, clear: 1.6, speed: 9.8, touchLen: 3, lineLen: 10, landFlatten: 0.3, runout: 20 },
         { type: 'arena', a: seg(72, 73, 0.75), b: L },
       ],
       // Les racines : dans le toboggan, dans la traversée vers le pont, et sous les grands sapins.
@@ -412,7 +412,7 @@ const BP_LIFT = [[-48, -1052], [52, 22]];
 const bikepark = {
   id: 'bikepark',
   name: 'Le Bike Park',
-  blurb: "1,2 km, environ 1 min 40, comme la A-Line de Whistler : une piste de ski taillée dans une forêt de douglas, le télésiège au-dessus, des berms bordés de filets. Des sauts de toutes les formes : kicker en bois, table, step-up, step-down, gap North Shore, doubles, drop en bois, road gap, et le Big One devant l'arrivée. En l'air, couche le vélo (whip).",
+  blurb: "1,2 km, environ 1 min 40, comme la A-Line de Whistler : une piste de ski taillée dans une forêt de douglas, le télésiège au-dessus, des berms bordés de filets. Des modules de toutes les formes : dalle de granit, kicker en bois, table, step-up, step-down, passerelle North Shore perchée, gap en bois, doubles, gap du ruisseau, drop du rocher, drop en bois, road gap, et le Big One devant l'arrivée. En l'air, couche le vélo (whip).",
   lift: BP_LIFT,
   scenery: 'bikepark',
   control: [
@@ -452,22 +452,30 @@ const bikepark = {
       speedTrap: cpS[30] + 2, // juste avant le Big One
       features: [
         { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
-        // ----- Le haut : un kicker en bois, une table, un step-up -----
+        // ----- Le haut : une dalle de granit à dévaler, un kicker en bois, une table, un step-up -----
+        // (la dalle : le granit de la côte, poli par les glaciers, qu'on descend sans freiner, comme à Whistler)
+        { type: 'slab', name: 'la dalle de granit', a: seg(2, 3, 0.15), b: seg(2, 3, 0.9) },
         // (le kicker : une lèvre de planches sur pilotis, raide et courte ; on se pose sur la table en terre)
         table('le kicker en bois', seg(3, 4, 0.2), 10.5, { lipH: 1.1, knuckle: 5, look: 'bois' }),
         table('deuxième table', seg(4, 5, 0.55), 11.5),
         // (le step-up : on décolle d'une lèvre raide et on se pose plus haut, au sommet d'une butte, avant de redescendre)
         { type: 'jump', kind: 'gap', name: 'step-up', look: 'trou', a: seg(5, 6, 0.8), lipLen: 4.5, lipH: 1.9, knuckle: 4.5, clear: 0.5, touchLen: 3, lineLen: 4, dip: -0.4, speed: 11.5, landFlatten: 0.1, runout: 22 },
         { type: 'brakeBumps', a: cpS[8] - 14, b: cpS[8] + 2 },
-        // ----- Le step-down, et le gap North Shore : lèvre et réception en planches, un trou entre les deux -----
+        // ----- Le step-down, la passerelle et le gap North Shore : lèvre et réception en planches, un trou entre les deux -----
+        // (la passerelle : un tablier de planches de 2,2 m de large, perché à 1,2 m, sans garde-corps ; on y monte et on
+        // en descend par des rampes)
         { type: 'jump', kind: 'drop', name: 'step-down', look: 'terre', a: seg(11, 12, 0.3), lipLen: 4, lipH: 0.7, knuckle: 2, clear: 0.8, touchLen: 4.5, speed: 11, dig: 1.5, landFlatten: 0.15 },
+        { type: 'bridge', style: 'shore', name: 'la passerelle North Shore', a: seg(12, 13, 0.15), b: seg(12, 13, 0.8), half: 1.1, raise: 1.2 },
         { type: 'jump', kind: 'gap', name: 'le gap en bois', look: 'bois', a: seg(13, 14, 0.15), lipLen: 6, lipH: 1.6, knuckle: 8, clear: 0.9, touchLen: 5, dip: -1.4, speed: 13, dig: 2.5, landFlatten: 0.15 },
         { type: 'brakeBumps', a: cpS[16] - 14, b: cpS[16] + 2 },
-        // ----- Les doubles : trois bosses de terre à franchir d'un coup, un trou creusé entre les deux buttes -----
-        ...[[19, 20, 0.2], [20, 21, 0.25], [21, 22, 0.2]].map(([i, j, t], k) => ({ type: 'jump', kind: 'gap', name: 'double', look: 'trou', a: seg(i, j, t), lipLen: 4.5, lipH: 1.3 + 0.15 * k, knuckle: 5.5 + 0.25 * k, clear: 0.6, touchLen: 3, lineLen: 6, dip: -0.9, speed: 11.5 + 0.3 * k, dig: 2, landFlatten: 0.15, runout: 14 })),
+        // ----- Les doubles : deux bosses de terre à franchir d'un coup, un trou creusé entre les deux buttes ; puis le
+        // même au-dessus d'un ruisseau -----
+        ...[[19, 20, 0.2], [20, 21, 0.25], [21, 22, 0.2]].map(([i, j, t], k) => ({ type: 'jump', kind: 'gap', name: k < 2 ? 'double' : 'le gap du ruisseau', look: k < 2 ? 'trou' : 'ruisseau', a: seg(i, j, t), lipLen: 4.5, lipH: 1.3 + 0.15 * k, knuckle: 5.5 + 0.25 * k, clear: 0.6, touchLen: 3, lineLen: 6, dip: k < 2 ? -0.9 : -1.5, speed: 11.5 + 0.3 * k, dig: 2, landFlatten: 0.15, runout: 14 })),
         { type: 'brakeBumps', a: cpS[23] - 12, b: cpS[23] + 2 },
-        // ----- Les bosses, le drop en bois (un tablier de planches sur pilotis, qui finit dans le vide) et le road gap -----
-        { type: 'rollers', a: seg(26, 27, 0.05), b: seg(26, 27, 0.5), height: 0.55, wave: 9 },
+        // ----- Le drop du rocher (une lèvre de granit), les bosses, le drop en bois (un tablier de planches sur pilotis, qui
+        // finit dans le vide) et le road gap -----
+        { type: 'jump', kind: 'drop', name: 'le drop du rocher', a: seg(25, 26, 0.05), lipLen: 4, lipH: 0.9, knuckle: 2, clear: 0.9, touchLen: 4, speed: 9.5, dig: 1.5, landFlatten: 0.15 },
+        { type: 'rollers', a: seg(26, 27, 0.12), b: seg(26, 27, 0.5), height: 0.55, wave: 9 },
         { type: 'jump', kind: 'drop', name: 'le drop en bois', look: 'bois', a: seg(26, 27, 0.75), lipLen: 4, lipH: 1.1, knuckle: 1.5, clear: 1.0, touchLen: 4, speed: 8.5, dig: 1.5, landFlatten: 0.15 },
         { type: 'jump', kind: 'gap', name: 'road gap', a: seg(28, 29, 0.0), lipLen: 6, lipH: 1.3, knuckle: 7, clear: 0.9, touchLen: 5, dip: -1.3, speed: 12, dig: 2.5, landFlatten: 0.15 },
         // ----- Le Big One -----

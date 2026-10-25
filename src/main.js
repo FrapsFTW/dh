@@ -13,6 +13,7 @@ import { createScene } from './render/scene.js';
 import { loadGroundTextures } from './render/groundTextures.js';
 import { loadPlants } from './render/plants.js';
 import { floraSpecies } from './render/vegetation.js';
+import { loadCrowd } from './render/crowd.js';
 import { loadMassif } from './render/range.js';
 import { createBikeModel } from './render/bikeModel.js';
 import { createCameraRig, CAMERA_SETTINGS } from './render/cameraRig.js';
@@ -65,6 +66,7 @@ let mode = [params.get('mode'), savedMode].find((m) => MODE_IDS.includes(m)) || 
 const groundTextures = loadGroundTextures();
 const massif = loadMassif();
 const plants = loadPlants(floraSpecies(MAPS[mapId].env.flora || null));
+const crowd = loadCrowd();
 await loading('Démarrage du moteur physique…', 0.05);
 await initPhysics();
 await loading(`Construction de la piste : ${MAPS[mapId].name}…`, 0.15);
@@ -92,7 +94,7 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 // AgX : des hautes lumières qui se fondent comme sur une photo (la neige au soleil ne vire pas au jaune ni au cyan).
 renderer.toneMapping = THREE.AgXToneMapping;
 renderer.toneMappingExposure = 1.5;
-const world = createScene(sim, { low, renderer, groundTextures: await groundTextures, massif: await massif, plants: await plants });
+const world = createScene(sim, { low, renderer, groundTextures: await groundTextures, massif: await massif, plants: await plants, crowd: await crowd });
 await loading('Préparation du vélo…', 0.75);
 const bikeModel = createBikeModel();
 world.scene.add(bikeModel.group);

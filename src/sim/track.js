@@ -139,10 +139,12 @@ export function createTrack(seed = 7, mapId = 'foret') {
   // Écart entre la piste et le relief naturel : on le reporte sur les côtés pour que la pente suive la piste.
   const D = new Float32Array(n);
   for (let i = 0; i < n; i++) D[i] = C[i] - natural(X[i], Z[i]);
-  // Sous un pont, le relief ne suit pas la piste : le ravin reste ouvert. DF est l'écart reporté sur les côtés.
+  // Sous un pont, le relief ne suit pas la piste : le ravin reste ouvert. DF est l'écart reporté sur les côtés. (Une
+  // passerelle North Shore, style 'shore', est posée sur la piste : le sol reste au niveau de la piste, en dessous.)
   const bridges = featureOf('bridge');
   const DF = D.slice();
   for (const f of bridges) {
+    if (f.style === 'shore') continue;
     for (let i = Math.max(0, Math.floor((f.a - 8) / DS)); i <= Math.min(n - 1, Math.ceil((f.b + 8) / DS)); i++) {
       const s = i * DS;
       DF[i] *= 1 - smoothstep(f.a - 7, f.a - 1, s) * (1 - smoothstep(f.b + 1, f.b + 7, s));
@@ -152,6 +154,11 @@ export function createTrack(seed = 7, mapId = 'foret') {
   const onBridge = (s) => {
     for (const f of bridges) if (s > f.a - 1 && s < f.b + 1) return smoothstep(f.a - 1, f.a + 1, s) * (1 - smoothstep(f.b - 1, f.b + 1, s));
     return 0;
+  };
+  /** La demi-largeur du tablier du pont en s (1,9 m, ou f.half pour une passerelle étroite). */
+  const bridgeHalf = (s) => {
+    for (const f of bridges) if (s > f.a - 1 && s < f.b + 1) return f.half ?? 1.9;
+    return 1.9;
   };
 
   // ---------- Les sauts, dessinés d'après la trajectoire ----------
@@ -202,7 +209,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
         else if (f.kind === 'drop') y = yLip + (yK - yLip) * smoothstep(0, f.knuckle, x); // la marche
         else {
           // Le trou : on descend vite dans la route, on remonte vite au pied de la réception.
-          const road = baseAt(sd) + f.dip;
+          // (sous un ruisseau, le fond est à plat : c'est le lit de l'eau)
+          const road = (f.look === 'ruisseau' ? baseAt(lipS + f.knuckle / 2) : baseAt(sd)) + f.dip;
           y = x < f.knuckle / 2 ? yLip + (road - yLip) * smoothstep(0, 1.4, x) : road + (yK - road) * smoothstep(f.knuckle - 1.6, f.knuckle, x);
         }
         h = y - baseAt(sd);
@@ -309,8 +317,12 @@ export function createTrack(seed = 7, mapId = 'foret') {
       else if (f.type === 'stairs') h += baseAt(f.a + f.step * Math.floor(d / f.step)) - baseAt(s);
       // Le gué : la piste plonge dans le lit du torrent.
       else if (f.type === 'ford') h -= f.depth * Math.sin((Math.PI * d) / (f.b - f.a)) ** 2;
+      // La passerelle North Shore : une rampe de planches, le tablier à f.raise m au-dessus du sol, une rampe pour en
+      // redescendre (sur les côtés, le sol reste en bas : c'est l'arête franche du pont qui s'en charge).
+      else if (f.type === 'bridge' && f.raise) h += f.raise * smoothstep(0, f.ramp ?? 5, d) * (1 - smoothstep(f.b - f.a - (f.ramp ?? 5), f.b - f.a, d));
     }
-    // Les modules s'effacent sur les côtés en pente douce, pour ne pas faire de mur si on passe au bord.
+    // Les modules s'effacent sur les côtés en pente douce, pour ne pas faire de mur si on passe au bord (sauf une
+    // passerelle : son bord est franc, voir trailY).
     h *= 1 - smoothstep(TRAIL_HALF + 0.2, TRAIL_HALF + 2.2, au);
     let bumps = 0;
     for (const r of roots) {
@@ -341,8 +353,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
     const rut = -0.05 * Math.exp(-((u / 1.1) ** 2));
     const yt = f.c - uc * Math.tan(f.bank) + rut + featureHeight(s, u);
     // Sur un pont, le bord est franc : au-delà du tablier, c'est le ravin.
-    const bw = bridges.length ? onBridge(s) : 0;
-    const w = smoothstep(2.9 - bw, 4.6 - 2 * bw, au);
+    const bw = bridges.length ? onBridge(s) : 0, half = bw ? bridgeHalf(s) : 1.9;
+    const w = smoothstep(2.9 - bw * (2.9 - half), 4.6 - bw * (3.9 - half), au);
     if (w <= 0) return yt;
     const xx = f.x + u * f.rx, zz = f.z + u * f.rz;
     const hn = terrainHeight(xx, zz, f.d, au) + 0.02;
@@ -359,6 +371,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
     ...bridges.map((f) => ({ a: f.a, b: f.b, surface: SURFACES.bois, whole: true })),
     ...features.filter((f) => f.wood).flatMap((f) => f.wood.map(([a, b]) => ({ a, b, surface: SURFACES.bois, whole: true }))),
     ...featureOf('slab').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.roche, whole: true })),
+    // (la lèvre d'un drop sans autre habillage : une dalle de granit)
+    ...featureOf('jump').filter((f) => f.kind === 'drop' && !f.look).map((f) => ({ a: f.a + 0.5, b: f.lipS + 0.4, surface: SURFACES.roche, whole: true })),
     ...featureOf('ford').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.eau, whole: true })),
     ...featureOf('road').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.gravier, whole: true })),
     ...(layout.surfaces || []).map((z) => ({ a: z.a, b: z.b, surface: SURFACES[z.surface], edge: z.edge && SURFACES[z.edge], off: z.off && SURFACES[z.off] })),
