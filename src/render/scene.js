@@ -36,7 +36,7 @@ function skyEnvironment(renderer, atm, clouds) {
   return tex;
 }
 
-export function createScene(sim, { low = false, renderer, groundTextures, massif } = {}) {
+export function createScene(sim, { low = false, renderer, groundTextures, massif, plants = {} } = {}) {
   const { track } = sim;
   const env = track.map.env;
   const SUN_DIR = env.sun ? new THREE.Vector3(...env.sun).normalize() : DEFAULT_SUN;
@@ -76,7 +76,7 @@ export function createScene(sim, { low = false, renderer, groundTextures, massif
   const ground = createGround(sim, groundTextures, { low });
   scene.add(ground.terrainMesh, ground.ribbonMesh);
   if (ground.far) scene.add(ground.far);
-  const vegetation = createVegetation(track, ground.forestAt, { sunDir: SUN_DIR, groundTextures });
+  const vegetation = createVegetation(track, ground.forestAt, { sunDir: SUN_DIR, groundTextures, plants, renderer, low });
   scene.add(vegetation.group);
   const forest = createForest(track, renderer, { low });
   scene.add(forest.group);
@@ -106,6 +106,7 @@ export function createScene(sim, { low = false, renderer, groundTextures, massif
     farScene,
     sun,
     course,
+    vegetation,
     forest,
     /** Jusqu'où la scène proche doit être dessinée (m). */
     viewDistance: env.far ? env.far.radius * 1.5 + 2500 : 4000,

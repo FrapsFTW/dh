@@ -1,16 +1,44 @@
-// Le sous-bois : herbes, fleurs, fougères, rochers, troncs couchés (les arbres sont dans trees.js). Selon la carte, des
-// épilobes (la côte Pacifique) ou le maquis (la Riviera : genêt, lavande, lentisques, herbe sèche).
-// Tout est en instances, regroupées par zones de 80 m : ce qui est hors du champ n'est pas dessiné, les herbes et les
-// fleurs pas au-delà de 220 m, les rochers pas au-delà de 900 m. En montagne, au-dessus des arbres, des blocs plus gros
-// et plus nombreux.
+// Le sous-bois : herbes, fleurs, fougères, arbrisseaux, rochers, troncs couchés (les arbres sont dans trees.js).
+// Les plantes sont des scans (plants.js) : de près en 3D, au loin en cartes qui portent leur image. Chaque carte a sa
+// flore : la forêt et l'alpage des Alpes ; la côte Pacifique (Le Bike Park : fougères, arbrisseaux, épilobes) ; le
+// maquis de la Riviera (Le Single : buissons, bruyères, genêt, lavande, herbe sèche).
+// Tout est en instances, regroupées par zones : ce qui est hors du champ n'est pas dessiné, les plantes pas au-delà de
+// 220 m, les rochers pas au-delà de 900 m. En montagne, au-dessus des arbres, des blocs plus gros et plus nombreux.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng, fbm, smoothstep } from '../sim/noise.js';
 import { TRAIL_HALF } from '../sim/track.js';
 import { rockGeometry, rockMaterial } from './rocks.js';
+import { bakeImpostors } from './plants.js';
 
-const TILE = 80;
+const TILE = 80, TILE_NEAR = 40;
+
+// Les espèces scannées (public/plantes) : l'échelle de chacune (les scans sont à la taille de la plante scannée, souvent
+// jeune) ; big : elle porte une ombre ; wide : elle est large et à hauteur de guidon (on la garde derrière la rubalise,
+// hors de la figure du pilote).
+export const SPECIES = {
+  fougere: { scale: [1.5, 2.3], big: true },
+  herbe: { scale: [1.8, 2.8] },
+  'herbe-seche': { scale: [2, 3.1] },
+  pissenlit: { scale: [1.8, 2.6] },
+  ficaire: { scale: [1.6, 2.3] },
+  empodium: { scale: [1.5, 2.1] },
+  ortie: { scale: [2.8, 3.8] },
+  bardane: { scale: [2.4, 3.4] },
+  oseille: { scale: [3.5, 5] },
+  arbrisseau: { scale: [1.6, 2.5], big: true },
+  myrtille: { scale: [2.4, 3.4] },
+  myrte: { scale: [0.8, 1.3], big: true, wide: true },
+  bruyere: { scale: [1.2, 1.9], big: true, wide: true },
+  gazania: { scale: [1.6, 2.3] },
+};
+/** Les espèces de chaque flore (env.flora ; sans flore, les Alpes). */
+export function floraSpecies(flora) {
+  if (flora === 'maquis') return ['herbe-seche', 'myrte', 'bruyere', 'gazania', 'empodium'];
+  if (flora === 'epilobe') return ['fougere', 'herbe', 'arbrisseau', 'myrtille', 'oseille', 'pissenlit'];
+  return ['fougere', 'herbe', 'herbe-seche', 'pissenlit', 'ficaire', 'empodium', 'ortie', 'bardane', 'oseille'];
+}
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
 // ---------- Les géométries ----------
@@ -180,29 +208,44 @@ function stem(ctx, S, x0, h, lean, color, width) {
 
 // L'épilobe (Le Bike Park) : de hautes tiges aux feuilles étroites, l'épi rose magenta en haut, boutons plus sombres au
 // bout. C'est elle qui couvre les pistes de ski de la côte Pacifique en été.
+// Une seule tige par carte (on les plante en touffes) : de longues feuilles étroites qui montent en spirale, les
+// capsules rougeâtres sous les fleurs, les fleurs à quatre pétales, puis les boutons vers la pointe.
 function drawFireweed(ctx, S) {
   const rand = rng(21);
-  for (let i = 0; i < 70; i++) { // l'herbe au pied
-    const x0 = S * (0.15 + rand() * 0.7), h = S * (0.12 + rand() * 0.2);
-    blade(ctx, S, rand, x0, h, S * 0.012, (rand() - 0.5) * S * 0.15, 'hsl(85, 30%, 20%)', { mid: 'hsl(82, 40%, 34%)', end: 'hsl(76, 44%, 42%)' });
+  const x0 = S * 0.5, h = S * 0.97, lean = S * 0.03;
+  const at = stem(ctx, S, x0, h, lean, 'hsl(350, 28%, 30%)', S * 0.011);
+  for (let j = 0; j < 30; j++) { // les feuilles, de plus en plus petites vers le haut, tournées vers le ciel
+    const t = 0.06 + (j / 30) * 0.58, [x, y] = at(t), side = j % 2 ? 1 : -1, len = S * (0.2 - t * 0.17) * (0.8 + rand() * 0.4);
+    const ang = side * (0.75 + rand() * 0.35), dark = 22 + rand() * 9 + t * 8;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI / 2 + ang);
+    const g = ctx.createLinearGradient(0, 0, len, 0);
+    g.addColorStop(0, `hsl(${98 + rand() * 10}, 32%, ${dark}%)`); g.addColorStop(1, `hsl(${92 + rand() * 10}, 38%, ${dark + 9}%)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(len * 0.45, -S * 0.016, len, 0); ctx.quadraticCurveTo(len * 0.45, S * 0.016, 0, 0); ctx.fill();
+    ctx.strokeStyle = `hsla(90, 25%, ${dark + 18}%, 0.6)`; ctx.lineWidth = S * 0.002;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len * 0.95, 0); ctx.stroke();
+    ctx.restore();
   }
-  for (let k = 0; k < 7; k++) {
-    const x0 = S * (0.2 + rand() * 0.6), h = S * (0.62 + rand() * 0.34), lean = (rand() - 0.5) * S * 0.12;
-    const at = stem(ctx, S, x0, h, lean, 'hsl(345, 30%, 32%)', S * 0.006);
-    for (let j = 0; j < 16; j++) { // les feuilles, de plus en plus petites vers le haut
-      const t = 0.1 + (j / 16) * 0.5, [x, y] = at(t), side = j % 2 ? 1 : -1, len = S * (0.09 - t * 0.08);
-      ctx.fillStyle = `hsl(${92 + rand() * 12}, ${34 + rand() * 10}%, ${24 + rand() * 10}%)`;
-      ctx.beginPath(); ctx.ellipse(x + side * len * 0.5, y + len * 0.15, len * 0.5, S * 0.006, side * 0.5, 0, Math.PI * 2); ctx.fill();
+  for (let j = 0; j < 8; j++) { // les capsules, fines et rouges, dressées sous les fleurs
+    const [x, y] = at(0.6 + j * 0.012), side = j % 2 ? 1 : -1;
+    ctx.strokeStyle = `hsl(${352 + rand() * 8}, 40%, ${30 + rand() * 8}%)`; ctx.lineWidth = S * 0.005;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + side * S * 0.03, y - S * 0.07); ctx.stroke();
+  }
+  for (let j = 0; j < 22; j++) { // les fleurs : quatre pétales roses autour d'un cœur plus pâle
+    const t = 0.66 + (j / 22) * 0.22, [x, y] = at(t), side = j % 2 ? 1 : -1;
+    const fx = x + side * S * (0.025 + rand() * 0.025), fy = y + (rand() - 0.5) * S * 0.01, r = S * (0.017 + rand() * 0.006);
+    for (let p = 0; p < 4; p++) {
+      const a = p * Math.PI / 2 + rand() * 0.4;
+      ctx.fillStyle = `hsl(${318 + rand() * 12}, ${52 + rand() * 14}%, ${50 + rand() * 12}%)`;
+      ctx.beginPath(); ctx.ellipse(fx + Math.cos(a) * r * 0.8, fy + Math.sin(a) * r * 0.55, r * 0.75, r * 0.5, a, 0, Math.PI * 2); ctx.fill();
     }
-    for (let j = 0; j < 26; j++) { // l'épi : fleurs ouvertes en bas, boutons en haut
-      const t = 0.62 + (j / 26) * 0.38, [x, y] = at(t), open = t < 0.9;
-      const r = S * (open ? 0.012 + rand() * 0.006 : 0.006);
-      ctx.fillStyle = open ? `hsl(${322 + rand() * 14}, ${62 + rand() * 14}%, ${52 + rand() * 12}%)` : `hsl(335, 45%, ${32 + rand() * 8}%)`;
-      for (let p = 0; p < (open ? 4 : 1); p++) {
-        const a = p * 1.57 + rand(), d = open ? r * 0.8 : 0;
-        ctx.beginPath(); ctx.arc(x + Math.cos(a) * d + (rand() - 0.5) * S * 0.02, y + Math.sin(a) * d * 0.6, r, 0, Math.PI * 2); ctx.fill();
-      }
-    }
+    ctx.fillStyle = 'hsl(320, 30%, 82%)';
+    ctx.beginPath(); ctx.arc(fx, fy, r * 0.25, 0, Math.PI * 2); ctx.fill();
+  }
+  for (let j = 0; j < 12; j++) { // les boutons, serrés, vers la pointe
+    const t = 0.88 + (j / 12) * 0.12, [x, y] = at(t), side = j % 2 ? 1 : -1;
+    ctx.fillStyle = `hsl(${335 + rand() * 8}, 42%, ${30 + rand() * 10}%)`;
+    ctx.beginPath(); ctx.ellipse(x + side * S * 0.012, y, S * 0.008, S * 0.014, side * 0.4, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -251,29 +294,55 @@ function drawShrub(ctx, S) {
 }
 
 /**
- * Le matériau des touffes : bords doux (alpha-to-coverage, avec l'antialiasing de la scène), le vent, et la lumière du
- * soleil qui traverse les brins quand on le regarde en face (l'herbe s'allume à contre-jour).
+ * Le matériau des plantes : bords doux (alpha-to-coverage, avec l'antialiasing de la scène), le vent, et la lumière du
+ * soleil qui traverse les feuilles quand on le regarde en face (l'herbe s'allume à contre-jour). Trois sortes :
+ * - 'carte' : une touffe dessinée (trois cartes croisées, hauteur 0 à 1) ;
+ * - 'plante' : une plante scannée en 3D (son attribut sway dit comment elle plie), dessinée jusqu'à uNear mètres ;
+ * - 'imposteur' : sa carte au loin, au-delà de uNear, ou uNearBig pour une grande plante (l'attribut aCell dit sa case
+ *   dans l'atlas, et si elle est grande ; uGrid la taille de l'atlas).
+ * Les normales des feuilles penchent vers le ciel (normalUp) : un feuillage s'éclaire en masse, pas feuille à feuille.
  */
-function windMaterial(map, sunDir, color = 0xffffff) {
-  const mat = new THREE.MeshStandardMaterial({ map, color, alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, metalness: 0 });
+function windMaterial(map, sunDir, { mode = 'carte', near = null, nearBig = null, grid = null, normalUp = 1 } = {}) {
+  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, metalness: 0 });
   mat.userData.time = { value: 0 };
-  mat.onBeforeCompile = (shader) => {
+  const vertex = (shader) => {
     shader.uniforms.uTime = mat.userData.time;
+    if (near) shader.uniforms.uNear = near;
+    if (nearBig) shader.uniforms.uNearBig = nearBig;
+    if (grid) shader.uniforms.uGrid = { value: grid };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', `#include <common>
+uniform float uTime;
+${mode !== 'carte' ? 'uniform float uNear;' : ''}
+${mode === 'plante' ? 'attribute float sway;' : ''}
+${mode === 'imposteur' ? 'attribute vec2 aCell;\nuniform vec2 uGrid;\nuniform float uNearBig;' : ''}`)
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+objectNormal = normalize(mix(objectNormal, vec3(0.0, 1.0, 0.0), ${normalUp.toFixed(2)}));`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
   float ph = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23;
 #else
   float ph = 0.0;
 #endif
-  float sway = (sin(uTime * 1.9 + ph) + 0.4 * sin(uTime * 4.3 + ph * 2.1)) * 0.07 * position.y * position.y;
-  transformed.x += sway;
-  transformed.z += sway * 0.6;`);
+  float wave = sin(uTime * 1.9 + ph) + 0.4 * sin(uTime * 4.3 + ph * 2.1);
+  float sw = ${mode === 'plante' ? '0.09 * sway' : '0.07 * position.y * position.y'} * wave;
+  transformed.x += sw;
+  transformed.z += sw * 0.6;
+#ifdef USE_INSTANCING
+${mode === 'plante' ? '  if (distance((modelMatrix * instanceMatrix[3]).xz, cameraPosition.xz) > uNear) transformed = vec3(0.0);' : ''}
+${mode === 'imposteur' ? '  if (distance((modelMatrix * instanceMatrix[3]).xz, cameraPosition.xz) < (aCell.y > 0.5 ? uNearBig : uNear)) transformed = vec3(0.0);' : ''}
+#endif`);
+    if (mode === 'imposteur') shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+vMapUv = (vec2(mod(aCell.x, uGrid.x), floor(aCell.x / uGrid.x)) + uv) / uGrid;`);
+  };
+  mat.onBeforeCompile = (shader) => {
+    vertex(shader);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <alphamap_fragment>', `#include <alphamap_fragment>
 // Au loin, les brins fins s'effacent dans les petites versions de la texture : on garde leur couverture.
 diffuseColor.a *= 1.0 + 0.5 * clamp(log2(max(length(fwidth(vMapUv * 512.0)), 1.0)), 0.0, 4.0);`)
+      // (une feuille vue de dos garde sa normale : elle est éclairée comme celles d'en face)
+      .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal *= faceDirection;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 {
   vec3 sunV = normalize((viewMatrix * vec4(${sunDir.x.toFixed(4)}, ${sunDir.y.toFixed(4)}, ${sunDir.z.toFixed(4)}, 0.0)).xyz);
@@ -281,47 +350,65 @@ diffuseColor.a *= 1.0 + 0.5 * clamp(log2(max(length(fwidth(vMapUv * 512.0)), 1.0
   totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.93, 0.75) * back * 1.4;
 }`);
   };
-  mat.customProgramCacheKey = () => 'touffe';
+  mat.customProgramCacheKey = () => `touffe-${mode}-${normalUp}`;
+  if (mode === 'plante') {
+    // L'ombre : la même plante, qui plie et disparaît de la même façon.
+    const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest: 0.5, side: THREE.DoubleSide });
+    depth.onBeforeCompile = vertex;
+    depth.customProgramCacheKey = () => 'touffe-ombre';
+    mat.userData.depth = depth;
+  }
   return mat;
 }
 
 // ---------- Placement ----------
 
+// Les instances, par zones : des carrés (size m de côté), ou ce que dit `zone` (les plantes en 3D : des tronçons de piste).
+// Une zone se dessine selon la distance de la caméra à son centre, moins son rayon.
 class Tiles {
-  constructor() { this.map = new Map(); }
-  add(name, x, z, matrix, color) {
-    const k = `${name}|${Math.floor(x / TILE)}|${Math.floor(z / TILE)}`;
+  constructor(size = TILE) { this.size = size; this.map = new Map(); }
+  add(name, x, z, matrix, color, cell = null, zone = null) {
+    const S = this.size, k = `${name}|${zone ?? `${Math.floor(x / S)}|${Math.floor(z / S)}`}`;
     let t = this.map.get(k);
-    if (!t) this.map.set(k, (t = { name, matrices: [], colors: [], cx: (Math.floor(x / TILE) + 0.5) * TILE, cz: (Math.floor(z / TILE) + 0.5) * TILE }));
+    if (!t) this.map.set(k, (t = { name, matrices: [], colors: [], cells: [], xs: [], zs: [] }));
     t.matrices.push(matrix.clone());
+    t.xs.push(x); t.zs.push(z);
     if (color) t.colors.push(color.clone());
+    if (cell !== null) t.cells.push(...cell);
   }
   build(group, kinds) {
     this.meshes = [];
     for (const t of this.map.values()) {
       const kind = kinds[t.name];
+      const cx = t.xs.reduce((a, b) => a + b, 0) / t.xs.length, cz = t.zs.reduce((a, b) => a + b, 0) / t.zs.length;
+      const half = 2 + Math.max(...t.xs.map((x, i) => Math.hypot(x - cx, t.zs[i] - cz)));
       // (une version plus simple au loin, si la sorte en a une : kind.far, à partir de kind.lod mètres)
       const make = (geometry) => {
+        if (t.cells.length) {
+          geometry = geometry.clone();
+          geometry.setAttribute('aCell', new THREE.InstancedBufferAttribute(new Float32Array(t.cells), 2));
+        }
         const mesh = new THREE.InstancedMesh(geometry, kind.material, t.matrices.length);
         t.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
         if (t.colors.length) t.colors.forEach((c, i) => mesh.setColorAt(i, c));
         mesh.castShadow = !!kind.castShadow;
         mesh.receiveShadow = !!kind.receiveShadow;
+        if (kind.material.userData.depth) mesh.customDepthMaterial = kind.material.userData.depth;
         mesh.computeBoundingSphere();
         mesh.name = t.name;
         group.add(mesh);
         return mesh;
       };
-      this.meshes.push({ mesh: make(kind.geometry), far: kind.far ? make(kind.far) : null, lod: kind.lod ?? Infinity, cx: t.cx, cz: t.cz, range: kind.range ?? (kind.near ? 220 : 0) });
+      this.meshes.push({ mesh: make(kind.geometry), far: kind.far ? make(kind.far) : null, lod: kind.lod ?? Infinity, cx, cz, range: kind.range ?? (kind.near ? 220 : 0), within: kind.within ?? null, beyond: kind.beyond ?? null, half });
     }
   }
 }
 
-export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0, 1, 0), groundTextures = null } = {}) {
+export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0, 1, 0), groundTextures = null, plants = {}, renderer = null, low = false } = {}) {
   const group = new THREE.Group();
   group.name = 'vegetation';
   const rand = rng(track.seed + 404);
-  const tiles = new Tiles();
+  const tiles = new Tiles(), nearTiles = new Tiles(TILE_NEAR);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
   const up = new THREE.Vector3(0, 1, 0);
 
@@ -329,20 +416,32 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
   const kinds = {};
 
   // ----- Le sous-bois : herbes, fleurs, fougères, le long de la piste et dans les prairies -----
-  // La flore de la carte (env.flora) : 'epilobe' (Le Bike Park), 'maquis' (Le Single, sans fougères), sinon la forêt
-  // des Alpes.
+  // La flore de la carte (env.flora) : 'epilobe' (Le Bike Park), 'maquis' (Le Single), sinon les Alpes.
   const flora = track.map.env.flora || null;
-  const grassMat = windMaterial(cardTexture(drawGrass(false, flora === 'maquis' ? 0.6 : 0.16)), sunDir);
-  const flowerMat = windMaterial(cardTexture(drawGrass(true)), sunDir);
-  const fernMat = windMaterial(cardTexture(drawFern), sunDir);
   const tuft = tuftGeometry();
-  kinds.grass = { geometry: tuft, material: grassMat, near: true };
-  kinds.flowers = { geometry: tuft, material: flowerMat, near: true };
-  kinds.fern = { geometry: tuft, material: fernMat, near: true };
-  const extra = flora === 'epilobe' ? [['epilobe', drawFireweed]] : flora === 'maquis' ? [['genet', drawBroom], ['lavande', drawLavender], ['buisson', drawShrub]] : [];
-  for (const [name, draw] of extra) kinds[name] = { geometry: tuft, material: windMaterial(cardTexture(draw), sunDir), near: true };
+  // Les plantes scannées : chaque variante en 3D de près (jusqu'à NEAR mètres, NEAR_BIG pour les grandes), et au loin
+  // une carte, toutes espèces dans le même atlas (une seule instance par zone).
+  const NEAR = { value: low ? 18 : 28 }, NEAR_BIG = { value: low ? 28 : 45 };
+  const species = {};
+  let atlas = null;
+  for (const name of floraSpecies(flora)) if (plants[name] && renderer) species[name] = plants[name];
+  if (Object.keys(species).length) {
+    atlas = bakeImpostors(renderer, Object.values(species));
+    for (const [name, sp] of Object.entries(species)) {
+      const big = !!SPECIES[name].big;
+      const mat = windMaterial(sp.map, sunDir, { mode: 'plante', near: big ? NEAR_BIG : NEAR, normalUp: /herbe/.test(name) ? 0.85 : 0.45 });
+      sp.variants.forEach((v, i) => { kinds[`${name}#${i}`] = { geometry: v.geometry, material: mat, within: big ? NEAR_BIG : NEAR, castShadow: big && !low }; });
+    }
+    kinds.imposteurs = { geometry: tuft, material: windMaterial(atlas.texture, sunDir, { mode: 'imposteur', near: NEAR, nearBig: NEAR_BIG, grid: new THREE.Vector2(atlas.cols, atlas.rows) }), near: true, beyond: NEAR };
+  }
+  // Les touffes dessinées : les fleurs de la carte qui n'ont pas de scan (épilobe, genêt, lavande), et de quoi remplacer
+  // une espèce qui n'a pas pu se charger.
+  const cards = { grass: () => drawGrass(false, flora === 'maquis' ? 0.6 : 0.16), fern: () => drawFern, epilobe: () => drawFireweed, genet: () => drawBroom, lavande: () => drawLavender, shrub: () => drawShrub };
+  const cardKind = (name) => {
+    if (!kinds[name]) kinds[name] = { geometry: tuft, material: windMaterial(cardTexture(cards[name]()), sunDir), near: true };
+    return name;
+  };
   const B = track.bounds;
-  const winds = Object.values(kinds).map((k) => k.material);
   // Au hasard dans le rectangle de la piste, ou dans sa bande (les longues pistes).
   const anywhere = () => {
     if (track.band === null) return [B.xmin + rand() * (B.xmax - B.xmin), B.zmin + rand() * (B.zmax - B.zmin)];
@@ -363,8 +462,12 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
   const more = track.length > 1000 ? track.length / 884 : 1;
   const treeline = track.map.env.treeline ?? null;
   const DRY = new THREE.Color(1.12, 0.98, 0.6), dryTint = new THREE.Color();
+  // Le bord de ce qui se roule : la trace, ou la dalle de roche (elle déborde de la trace de 2 m).
+  const slabs = track.features.filter((f) => f.type === 'slab');
+  const edgeAt = (ss) => track.trailHalfAt(ss) + (slabs.some((f) => ss > f.a - 2 && ss < f.b + 2) ? 2.4 : 0.3);
   let placed = 0;
-  for (let k = 0; k < 90000 * more && placed < 26000 * more; k++) {
+  const counts = {};
+  for (let k = 0; k < (low ? 90000 : 200000) * more && placed < (low ? 26000 : 56000) * more; k++) {
     // Surtout près de la piste : c'est là qu'on regarde.
     let x, z;
     if (rand() < 0.75) {
@@ -377,28 +480,78 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     if (near.inside && near.dist < track.trailHalfAt(near.s) + 0.4) continue; // (jusqu'au bord de la trace, même étroite)
     if (bare(x, z, near)) continue;
     const forest = forestAt(x, z);
-    const n = fbm(x / 9, z / 9, 2, 31) * 0.5 + 0.5;
+    const n = fbm(x / 9, z / 9, 2, 31) * 0.5 + 0.5, r = rand();
+    const y = track.groundY(x, z);
+    // (en altitude, l'herbe des Alpes devient rase et sèche)
+    const alpine = treeline !== null && flora === null && y > treeline - 60 + rand() * 80;
     let kind;
     if (flora === 'maquis') {
-      // Le maquis : sous les arbres, des buissons ; au soleil, l'herbe sèche, le genêt et la lavande par plaques.
-      if (forest > 0.45) { if (rand() > 0.5) continue; kind = 'buisson'; }
-      else kind = n > 0.6 ? (rand() < 0.5 ? 'genet' : 'lavande') : rand() < 0.15 ? 'buisson' : 'grass';
-    } else if (forest > 0.45) { if (rand() > 0.55) continue; kind = 'fern'; }
-    else if (flora === 'epilobe' && n > 0.6 && rand() < 0.7) kind = 'epilobe'; // des nappes d'épilobes dans la piste de ski
-    else kind = n > 0.62 && rand() < 0.5 ? 'flowers' : rand() < 0.12 ? 'fern' : 'grass';
-    const y = track.groundY(x, z);
-    const big = kind === 'fern' || kind === 'buisson' || kind === 'genet';
-    const size = kind === 'epilobe' ? 0.9 + rand() * 0.7 : big ? 0.7 + rand() * 0.6 : 0.35 + rand() * 0.45 + (1 - forest) * 0.15;
-    // Les buissons du maquis, larges et à hauteur de guidon : derrière la rubalise, pas dans la figure du pilote.
-    if ((kind === 'buisson' || kind === 'genet') && Number.isFinite(near.dist) && near.dist < track.tapeAt(near.s) + 0.3 + size * 0.75) continue;
-    q.setFromAxisAngle(up, rand() * Math.PI);
-    col.setScalar(0.75 + rand() * 0.4);
+      // Le maquis : sous les pins, des buissons et des bruyères ; au soleil, l'herbe sèche, le genêt et la lavande par
+      // plaques, des fleurs jaunes et orange.
+      if (forest > 0.45) { if (r > 0.85) continue; kind = r < 0.3 ? 'myrte' : r < 0.55 ? 'bruyere' : 'herbe-seche'; }
+      else if (n > 0.6) kind = r < 0.35 ? 'genet' : r < 0.7 ? 'lavande' : r < 0.85 ? 'gazania' : 'empodium';
+      else kind = r < 0.14 ? 'myrte' : r < 0.32 ? 'bruyere' : 'herbe-seche';
+    } else if (flora === 'epilobe') {
+      // La côte Pacifique : un sous-bois de fougères et d'arbrisseaux ; dans la piste de ski, des nappes d'épilobes.
+      if (forest > 0.45) { if (r > 0.65) continue; kind = r < 0.32 ? 'fougere' : r < 0.45 ? 'arbrisseau' : r < 0.55 ? 'myrtille' : 'oseille'; }
+      else if (n > 0.6 && r < 0.7) kind = 'epilobe';
+      else kind = r < 0.08 ? 'fougere' : r < 0.14 ? 'arbrisseau' : r < 0.2 ? 'pissenlit' : 'herbe';
+    } else if (forest > 0.45) {
+      // La forêt des Alpes : des fougères, de l'oseille des bois, des orties et des bardanes au bord des clairières.
+      if (r > 0.7) continue;
+      kind = r < 0.42 ? 'fougere' : r < 0.52 ? 'oseille' : r < 0.57 ? 'ortie' : r < 0.62 ? 'bardane' : 'herbe';
+    } else if (n > 0.62 && r < 0.5) kind = alpine ? (r < 0.25 ? 'empodium' : 'pissenlit') : r < 0.2 ? 'pissenlit' : r < 0.35 ? 'ficaire' : 'empodium';
+    else kind = alpine ? (r < 0.55 ? 'herbe-seche' : 'herbe') : r < 0.06 ? 'fougere' : r < 0.09 ? 'bardane' : 'herbe';
+    // (une espèce sans scan chargé : une touffe dessinée)
+    const sp = species[kind];
+    if (!sp && SPECIES[kind]) kind = cardKind(kind === 'fougere' ? 'fern' : SPECIES[kind].big ? 'shrub' : 'grass');
+    else if (!sp) cardKind(kind);
+    q.setFromAxisAngle(up, rand() * Math.PI * 2);
+    col.setScalar(0.8 + rand() * 0.35);
     // En altitude, l'herbe est rase et jaunie ; sous les arbres, plus sombre.
     if (treeline !== null) col.multiply(dryTint.setRGB(1, 1, 1).lerp(DRY, smoothstep(treeline - 80, treeline + 30, y)));
     col.multiplyScalar(1 - 0.3 * forest);
-    tiles.add(kind, x, z, m4.compose(p.set(x, y - 0.03, z), q, s.set(size * (big ? 1.5 : 1.2), size, size * (big ? 1.5 : 1.2))), col);
+    if (sp) {
+      // Les petites plantes poussent en touffes : quelques pieds autour du premier.
+      const clump = SPECIES[kind].big ? 1 : 2 + Math.floor(rand() * 4);
+      let x1 = x, z1 = z, y1 = y;
+      for (let j = 0; j < clump; j++) {
+        const v = Math.floor(rand() * sp.variants.length), V = sp.variants[v], [a, b] = SPECIES[kind].scale;
+        const size = (a + rand() * (b - a)) * (kind === 'herbe' ? 0.8 + 0.4 * (1 - forest) : 1);
+        if (j) {
+          const ang = rand() * Math.PI * 2, d = (0.3 + rand() * 0.5) * V.w * size;
+          x1 = x + Math.cos(ang) * d; z1 = z + Math.sin(ang) * d; y1 = track.groundY(x1, z1);
+        }
+        // Une plante large, à hauteur de guidon : derrière la rubalise, pas dans la figure du pilote ; les autres
+        // débordent au plus jusqu'au bord de la trace.
+        const reach = (V.w * size) / 2, nr = j ? track.nearest(x1, z1, null, 0, 3) : near;
+        if (Number.isFinite(nr.dist) && nr.dist < (SPECIES[kind].wide ? track.tapeAt(nr.s) + 0.3 + reach : edgeAt(nr.s) + reach * 0.5)) continue;
+        q.setFromAxisAngle(up, rand() * Math.PI * 2);
+        p.set(x1, y1 - 0.02, z1);
+        // (de près, par tronçons de 40 m de piste : c'est le long de la piste qu'elles sont ; plus loin, par carrés)
+        nearTiles.add(`${kind}#${v}`, x1, z1, m4.compose(p, q, s.setScalar(size)), col, null, nr.dist < 25 ? `s${Math.floor(nr.s / 40)}` : null);
+        tiles.add('imposteurs', x1, z1, m4.compose(p, q, s.set(V.w * size, V.h * size, V.w * size)), col, [V.cell, SPECIES[kind].big ? 1 : 0]);
+        counts[kind] = (counts[kind] || 0) + 1;
+      }
+    } else if (kind === 'epilobe') {
+      // Les épilobes : des tiges seules, en touffes serrées, de 0,9 à 1,6 m.
+      const n = 4 + Math.floor(rand() * 6);
+      for (let j = 0; j < n; j++) {
+        const x1 = x + (rand() - 0.5) * 1.2, z1 = z + (rand() - 0.5) * 1.2, h = 0.9 + rand() * 0.7;
+        const nr = j ? track.nearest(x1, z1, null, 0, 3) : near;
+        if (Number.isFinite(nr.dist) && nr.dist < track.trailHalfAt(nr.s) + 0.5) continue;
+        q.setFromAxisAngle(up, rand() * Math.PI * 2);
+        tiles.add(kind, x1, z1, m4.compose(p.set(x1, track.groundY(x1, z1) - 0.03, z1), q, s.set(h * 0.42, h, h * 0.42)), col);
+      }
+    } else {
+      const big = kind === 'fern' || kind === 'shrub' || kind === 'genet';
+      const size = kind === 'epilobe' ? 0.9 + rand() * 0.7 : big ? 0.7 + rand() * 0.6 : 0.35 + rand() * 0.45 + (1 - forest) * 0.15;
+      if ((kind === 'shrub' || kind === 'genet') && Number.isFinite(near.dist) && near.dist < track.tapeAt(near.s) + 0.3 + size * 0.75) continue;
+      tiles.add(kind, x, z, m4.compose(p.set(x, y - 0.03, z), q, s.set(size * (big ? 1.5 : 1.2), size, size * (big ? 1.5 : 1.2))), col);
+    }
     placed++;
   }
+  const winds = [...new Set(Object.values(kinds).map((k) => k.material))];
 
   // ----- Les rochers et les troncs couchés -----
   const rockMat = rockMaterial(groundTextures, { moss: flora === 'maquis' ? 0.1 : treeline === null ? 0.55 : 0.35, alpine: treeline !== null });
@@ -441,17 +594,24 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
   }
 
   tiles.build(group, kinds);
+  nearTiles.build(group, kinds);
+  const all = [...tiles.meshes, ...nearTiles.meshes];
   return {
     group,
+    /** Les plantes en 3D jusqu'à cette distance (m), en cartes au-delà ; combien de pieds de chaque espèce. */
+    near: NEAR,
+    counts,
+    atlas,
     update(t, camera) {
       for (const m of winds) m.userData.time.value = t;
       if (!camera) return;
       const cx = camera.position.x, cz = camera.position.z;
-      for (const e of tiles.meshes) {
+      for (const e of all) {
         const d = Math.hypot(e.cx - cx, e.cz - cz);
-        const shown = !e.range || d < e.range + TILE * 0.71;
-        e.mesh.visible = shown && d < e.lod + TILE * 0.71;
-        if (e.far) e.far.visible = shown && d >= e.lod + TILE * 0.71;
+        // (within : les plantes en 3D, que de près ; les cartes des plantes, pas dans une zone toute proche)
+        const shown = (!e.range || d < e.range + e.half) && (!e.within || d < e.within.value + e.half) && (!e.beyond || d > e.beyond.value - e.half);
+        e.mesh.visible = shown && d < e.lod + e.half;
+        if (e.far) e.far.visible = shown && d >= e.lod + e.half;
       }
     },
   };

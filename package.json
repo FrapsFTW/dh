@@ -11,7 +11,8 @@
     "shots": "node tools/shots.mjs",
     "trace": "node tools/trace.mjs auto 200",
     "prepare-bike": "node tools/prepare-bike.mjs 20261018170123_b442c697.glb",
-    "sons": "node tools/sons.mjs"
+    "sons": "node tools/sons.mjs",
+    "plantes": "node tools/plantes.mjs"
   },
   "dependencies": {
     "@dgreenheck/ez-tree": "^1.1.0",

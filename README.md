@@ -264,8 +264,12 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
   le vrai modèle jusqu'à 35 m, avec ses ombres ; jusqu'à 70 m, le même arbre au feuillage allégé (une feuille sur
   trois, agrandie), sans ombre ; au-delà, un imposteur (sa photo sur deux plans croisés), et des milliers
   d'imposteurs sur le relief lointain. En montagne, les arbres s'arrêtent à une altitude, en rapetissant.
-- `src/render/vegetation.js` : herbes, fleurs, fougères, rochers, troncs couchés. Les touffes ont des bords doux
-  (alpha-to-coverage) et s'allument à contre-jour ; en altitude, l'herbe jaunit.
+- `src/render/vegetation.js` et `src/render/plants.js` : herbes, fleurs, fougères, arbrisseaux, rochers, troncs
+  couchés. Les plantes sont des scans de Poly Haven (`public/plantes/`, préparés par `npm run plantes` : découpés,
+  allégés, texture et transparence réunies) : en 3D jusqu'à 28 m (45 m pour les grandes), plante par plante, puis en
+  cartes croisées qui portent leur image, rendue au lancement depuis les mêmes modèles (un atlas pour toutes). Chaque
+  piste a sa flore : forêt et alpage des Alpes, fougères et épilobes du Bike Park, maquis du Single. Les feuilles ont
+  des bords doux (alpha-to-coverage), plient au vent et s'allument à contre-jour ; en altitude, l'herbe jaunit.
 - `src/render/post.js` et `src/render/speedFx.js` : la sensation de vitesse, de 25 à 55 km/h : flou radial et
   légère aberration chromatique sur les bords, vision en tunnel, poussière qui file. La caméra vibre à haute vitesse
   (plus dans les cailloux) et le champ de vision s'ouvre ; le vent gronde dans le casque. Tout se règle avec G.
@@ -343,6 +347,8 @@ node tools/film.mjs [plan…]   # tourne des plans du peloton image par image (s
   aerial_grass_rock, forest_leaves_04, forest_ground_04, rocky_trail, rock_face_03, gray_rocks, snow_02,
   cobblestone_05, castle_wall_slates, white_rough_plaster, roof_slates_03, weathered_planks), assemblées par
   `tools/ground-textures.mjs`.
+- Les plantes : des scans CC0 de [Poly Haven](https://polyhaven.com), préparés par `tools/plantes.mjs` ; leurs auteurs
+  sont dans `public/plantes/CREDITS.txt`.
 - Les sons : des prises CC0 de [Freesound](https://freesound.org), préparées par `tools/sons.mjs` (boucles sans
   couture, niveaux) ; leurs auteurs sont dans `public/sons/CREDITS.txt`.
 - L'érosion de `tools/massif.mjs` (désactivée par défaut, `DROPS=700000`) suit Hans Theobald Beyer, « Implementation

@@ -538,9 +538,21 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
     box(w, 2.0, 0.05, 0, -1.0, len / 2 - 0.05, woodDark); // sous le plancher
     // Les piliers sous la rampe.
     for (const z of [-len / 2 + 0.3, 0, len / 2 - 0.3]) for (const x of [-w / 2 + 0.2, w / 2 - 0.2]) box(0.16, 2.2, 0.16, x, -1.1, z, woodDark);
-    // Le portillon de départ et l'horloge.
-    const gate = box(w - 0.3, 0.08, 0.08, 0, 0.65, -len / 2 + 0.2, new THREE.MeshStandardMaterial({ color: lin('#d42a1f'), roughness: 0.5 }));
+    // Le portillon de départ et l'horloge. La barre pivote sur son poteau de gauche : elle se lève au GO (juste après la
+    // sortie de la cabane, pour ne pas toucher le toit).
+    const gate = new THREE.Group(), gz = -len / 2 - 0.65;
     gate.name = 'portillon';
+    gate.position.set(-(w - 0.3) / 2, 0.65, gz);
+    hut.add(gate);
+    const red = new THREE.MeshStandardMaterial({ color: lin('#d42a1f'), roughness: 0.5 }), grey = new THREE.MeshStandardMaterial({ color: lin('#9aa1a8'), roughness: 0.4, metalness: 0.6 });
+    const bar = box(w - 0.3, 0.08, 0.08, (w - 0.3) / 2, 0, 0, red);
+    gate.add(bar);
+    // (des bandes blanches sur la barre, et le pivot)
+    for (let i = 1; i < 6; i += 2) gate.add(box((w - 0.3) / 7, 0.084, 0.084, (w - 0.3) * (i + 0.5) / 7, 0, 0, new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 })));
+    const hub = box(0.14, 0.14, 0.14, 0, 0, 0, grey);
+    gate.add(hub);
+    box(0.09, 0.75, 0.09, -(w - 0.3) / 2 - 0.02, 0.37, gz, grey);
+    box(0.09, 0.75, 0.09, (w - 0.3) / 2 + 0.02, 0.37, gz, grey);
     const clock = canvasTex(256, 128, () => {});
     const clockMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.55), new THREE.MeshBasicMaterial({ map: clock.tex, toneMapped: false }));
     clockMesh.position.set(-w / 2 + 0.08, 2.0, -len / 2 + 0.9);
