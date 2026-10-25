@@ -1,7 +1,8 @@
 // Un pilote automatique simple : il suit le tracé et freine avant les virages.
 // Il sert aux tests (la piste est-elle faisable ?) et à la démo (touche P).
 // Il a exactement les mêmes commandes que le joueur : la courbe voulue, les freins, le pédalage, le poids.
-// opts.trick ('backflip', 'frontflip', '360') : il tente une figure au saut d'arrivée (démo du mode Normal).
+// opts.trick ('backflip', 'frontflip', '360', 'whip') : il tente une figure au saut d'arrivée, ou au Big One du Bike Park
+// (démo).
 // opts.pace (1 par défaut) : plus ou moins d'attaque en virage et dans les zones lentes (les rivaux du peloton).
 // opts.line(s) : l'écart au milieu de la piste qu'il vise à la distance s, en mètres (sa trajectoire à lui).
 // opts.boost et la suite (pedalTo, jumpLead, steerMax, gripMax, look…) : l'engagement des rivaux (peloton.js, attack).
@@ -47,7 +48,7 @@ export function autopilot(sim, opts = {}) {
   const steerMax = opts.steerMax ?? 0.8;
   const want = st.airTime > 0 ? 0 : clamp(curvature / Math.max(kmax, 1e-4), -steerMax, steerMax);
   mem.steer += (want - mem.steer) * Math.min(1, STEP / 0.12); // il est appelé à chaque pas de physique
-  const steer = mem.steer;
+  let steer = mem.steer;
 
   // Vitesse visée : assez lente pour chaque virage à venir, en tenant compte de la distance pour freiner. Dans une
   // pente raide, la gravité mange une partie du freinage : il faut s'y prendre plus tôt.
@@ -131,12 +132,14 @@ export function autopilot(sim, opts = {}) {
   }
   // Démo (mode Normal) : une figure au saut d'arrivée. Groupé, stick à fond, lâché passé la moitié du tour.
   let hop = false;
-  const air = sim.tricks && sim.tricks.air, finish = opts.trick && track.features.find((f) => f.name === "saut d'arrivée");
+  const air = sim.tricks && sim.tricks.air, finish = opts.trick && track.features.find((f) => f.name === "saut d'arrivée" || f.name === 'le Big One');
   // Un seul essai par passage : pas de deuxième figure sur un rebond de la réception.
   if (finish && race.s < finish.lipS - 1) mem.trick = 'prêt';
   if (finish && mem.trick === 'prêt' && air && Math.abs(race.s - finish.lipS) < 2) mem.trick = 'en cours';
   if (mem.trick === 'en cours' && !air) mem.trick = 'fait';
-  if (mem.trick === 'en cours') {
+  // (le whip : stick sur le côté la première moitié du vol, puis lâché, pour redresser le vélo avant de se poser)
+  if (mem.trick === 'en cours' && opts.trick === 'whip') steer = st.airTime < 0.55 ? 1 : 0;
+  else if (mem.trick === 'en cours') {
     const turned = opts.trick === '360' ? Math.abs(air.yaw) : Math.abs(air.pitch);
     if (turned < 4.2) {
       hop = true;

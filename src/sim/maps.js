@@ -400,14 +400,21 @@ const avalanche = {
 };
 
 // ---------------------------------------------------------------------------------------------------------------
-// Le Bike Park : une ligne de gros sauts dans un alpage, pour le plaisir de voler.
+// Le Bike Park : une ligne de gros sauts, comme dans les bike parks des montagnes de la côte Pacifique (la A-Line de
+// Whistler) : une piste de ski taillée dans une forêt de douglas immenses, un télésiège qui remonte les vélos, des
+// sauts lissés à la machine, des virages relevés bordés de filets, une passerelle en bois.
 //   la ligne des trois tables · berm · step-down et le grand gap · berm · les doubles · berm · bosses et road gap ·
 //   le Big One, le plus gros saut du jeu, devant l'arrivée. Les virages sont des berms : relevés, on les prend vite.
 // ---------------------------------------------------------------------------------------------------------------
+// Le télésiège : la gare du bas près de l'arrivée, celle du haut à côté de la cabane de départ.
+const BP_LIFT = [[-48, -1052], [52, 22]];
+
 const bikepark = {
   id: 'bikepark',
   name: 'Le Bike Park',
-  blurb: "1,2 km dans un alpage, une dizaine de gros sauts reliés par des berms, environ 1 min 30. Pour voler : tables, step-down, gaps, et le Big One devant l'arrivée. En l'air, couche le vélo (whip).",
+  blurb: "1,2 km, environ 1 min 40, comme la A-Line de Whistler : une piste de ski taillée dans une forêt de douglas, le télésiège au-dessus, des berms bordés de filets. Des sauts de toutes les formes : kicker en bois, table, step-up, step-down, gap North Shore, doubles, drop en bois, road gap, et le Big One devant l'arrivée. En l'air, couche le vélo (whip).",
+  lift: BP_LIFT,
+  scenery: 'bikepark',
   control: [
     // la cabane, et la ligne des trois tables
     [0, 40], [0, 24], [0, 0], [8, -40], [22, -90], [38, -140], [52, -185], [62, -215],
@@ -426,7 +433,7 @@ const bikepark = {
     // le Big One et l'arrivée
     [-30, -910], [-22, -950], [-18, -990], [-16, -1030], [-16, -1070],
   ],
-  // Un alpage régulier (21 %), qui s'adoucit en bas dans le fond de vallée de l'arrivée.
+  // Une pente régulière (21 %), qui s'adoucit en bas dans le fond de vallée de l'arrivée.
   relief(seed) {
     const SLOPE = 0.21, VALLEY_Z = 1010;
     const valley = (z) => SLOPE * z + (SLOPE - 0.04) * 10 * softplus(-(z + VALLEY_Z) / 10);
@@ -445,26 +452,28 @@ const bikepark = {
       speedTrap: cpS[30] + 2, // juste avant le Big One
       features: [
         { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
-        // ----- La ligne des trois tables -----
-        table('première table', seg(3, 4, 0.2), 10.5, { lipH: 1.1, knuckle: 5 }),
+        // ----- Le haut : un kicker en bois, une table, un step-up -----
+        // (le kicker : une lèvre de planches sur pilotis, raide et courte ; on se pose sur la table en terre)
+        table('le kicker en bois', seg(3, 4, 0.2), 10.5, { lipH: 1.1, knuckle: 5, look: 'bois' }),
         table('deuxième table', seg(4, 5, 0.55), 11.5),
-        table('la grande table', seg(5, 6, 0.85), 12.5, { lipH: 1.8, knuckle: 8, clear: 0.9 }),
+        // (le step-up : on décolle d'une lèvre raide et on se pose plus haut, au sommet d'une butte, avant de redescendre)
+        { type: 'jump', kind: 'gap', name: 'step-up', look: 'trou', a: seg(5, 6, 0.8), lipLen: 4.5, lipH: 1.9, knuckle: 4.5, clear: 0.5, touchLen: 3, lineLen: 4, dip: -0.4, speed: 11.5, landFlatten: 0.1, runout: 22 },
         { type: 'brakeBumps', a: cpS[8] - 14, b: cpS[8] + 2 },
-        // ----- Le step-down et le grand gap -----
+        // ----- Le step-down, et le gap North Shore : lèvre et réception en planches, un trou entre les deux -----
         { type: 'jump', kind: 'drop', name: 'step-down', look: 'terre', a: seg(11, 12, 0.3), lipLen: 4, lipH: 0.7, knuckle: 2, clear: 0.8, touchLen: 4.5, speed: 11, dig: 1.5, landFlatten: 0.15 },
-        { type: 'jump', kind: 'gap', name: 'le grand gap', a: seg(13, 14, 0.15), lipLen: 6, lipH: 1.6, knuckle: 8, clear: 0.9, touchLen: 5, dip: -1.1, speed: 13, dig: 2.5, landFlatten: 0.15 },
+        { type: 'jump', kind: 'gap', name: 'le gap en bois', look: 'bois', a: seg(13, 14, 0.15), lipLen: 6, lipH: 1.6, knuckle: 8, clear: 0.9, touchLen: 5, dip: -1.4, speed: 13, dig: 2.5, landFlatten: 0.15 },
         { type: 'brakeBumps', a: cpS[16] - 14, b: cpS[16] + 2 },
-        // ----- Les doubles -----
-        table('double', seg(19, 20, 0.35), 12),
-        table('double', seg(20, 21, 0.55), 12.5, { lipH: 1.6, knuckle: 7.5 }),
-        { type: 'brakeBumps', a: cpS[23] - 14, b: cpS[23] + 2 },
-        // ----- Les bosses et le road gap -----
-        { type: 'rollers', a: seg(26, 27, 0.1), b: seg(26, 27, 0.9), height: 0.6, wave: 10 },
+        // ----- Les doubles : trois bosses de terre à franchir d'un coup, un trou creusé entre les deux buttes -----
+        ...[[19, 20, 0.2], [20, 21, 0.25], [21, 22, 0.2]].map(([i, j, t], k) => ({ type: 'jump', kind: 'gap', name: 'double', look: 'trou', a: seg(i, j, t), lipLen: 4.5, lipH: 1.3 + 0.15 * k, knuckle: 5.5 + 0.25 * k, clear: 0.6, touchLen: 3, lineLen: 6, dip: -0.9, speed: 11.5 + 0.3 * k, dig: 2, landFlatten: 0.15, runout: 14 })),
+        { type: 'brakeBumps', a: cpS[23] - 12, b: cpS[23] + 2 },
+        // ----- Les bosses, le drop en bois (un tablier de planches sur pilotis, qui finit dans le vide) et le road gap -----
+        { type: 'rollers', a: seg(26, 27, 0.05), b: seg(26, 27, 0.5), height: 0.55, wave: 9 },
+        { type: 'jump', kind: 'drop', name: 'le drop en bois', look: 'bois', a: seg(26, 27, 0.75), lipLen: 4, lipH: 1.1, knuckle: 1.5, clear: 1.0, touchLen: 4, speed: 8.5, dig: 1.5, landFlatten: 0.15 },
         { type: 'jump', kind: 'gap', name: 'road gap', a: seg(28, 29, 0.0), lipLen: 6, lipH: 1.3, knuckle: 7, clear: 0.9, touchLen: 5, dip: -1.3, speed: 12, dig: 2.5, landFlatten: 0.15 },
         // ----- Le Big One -----
         // Le plus gros saut du jeu : près d'une seconde et demie en l'air, de quoi tenter un backflip, un 360 ou un gros
         // whip. La réception pardonne d'arriver un peu trop vite.
-        { type: 'jump', kind: 'table', name: 'le Big One', a: cpS[30] + 8, lipLen: 7, lipH: 2.6, knuckle: 10, clear: 1.6, speed: 12.5, touchLen: 4, lineLen: 10, landFlatten: 0.25, runout: 18 },
+        { type: 'jump', kind: 'table', name: 'le Big One', a: cpS[30] + 8, lipLen: 7, lipH: 2.6, knuckle: 9, clear: 1.4, speed: 12.2, touchLen: 4, lineLen: 10, landFlatten: 0.25, runout: 18, crowd: 90 },
         { type: 'arena', a: seg(32, 33, 0.75), b: L },
       ],
       gates: [
@@ -479,19 +488,39 @@ const bikepark = {
       fast: [{ a: sStart, b: sFinish, vmax: 15 }],
     };
   },
-  // Un alpage : quelques bosquets de sapins, beaucoup d'herbe.
-  trees: { tries: 9000 },
-  env: { treeline: null, haze: 1.2e-4, hazeHeight: 1100, far: { radius: 1100, step: 14 }, range: { height: 1500, top: 220, ramp: 1400, scale: 0.6 } },
+  // La forêt de la côte : des douglas de 25 à 40 m, serrés, quelques feuillus ; la piste de ski est une large saignée
+  // aux bords irréguliers (avec quelques arbres isolés), et la ligne du télésiège la sienne.
+  trees: {
+    tries: 30000,
+    density(d, x, z) {
+      if (d < 5.4 || distToPolyline(BP_LIFT, x, z) < 9 + 3 * fbm(x / 30, z / 30, 2, 67)) return 0;
+      const run = 17 + 9 * fbm(x / 50, z / 50, 2, 61);
+      return d < run ? 0.012 : 0.5 * smoothstep(run, run + 5, d);
+    },
+    kind: (r) => (r < 0.88 ? 'douglas' : 'feuillu'),
+    height: (kind, h) => (kind === 'douglas' ? 12 + h * 1.25 : h * 0.9),
+  },
+  // Le décor : la forêt jusqu'à mi-pente, au-dessus la roche et les glaciers de la chaîne côtière ; un air limpide.
+  env: {
+    treeline: 260, snowline: 520, haze: 8e-5, hazeHeight: 1400,
+    far: { radius: 1300, step: 14 }, range: { height: 2600, top: 320, ramp: 1600, scale: 0.8 },
+    flora: 'epilobe',
+    spotCrowd: 5, // (un jour ordinaire au bike park : quelques pilotes regardent ; la foule est au Big One)
+    banners: ['WHIP-OFF', 'BIKE PARK', 'LIGNE DES SAUTS', 'SEND IT', 'BIG ONE', 'CÔTE PACIFIQUE'],
+  },
 };
 
 // ---------------------------------------------------------------------------------------------------------------
-// Le Single : un petit sentier dans les sapins, à peine plus large qu'un guidon, qui descend en épingles.
-//   Balisé serré presque de bout en bout : les troncs frôlent la rubalise. Des racines, un pierrier, une petite marche.
+// Le Single : un sentier de la Riviera, comme à Finale Ligure, à peine plus large qu'un guidon, qui descend en épingles
+// vers la mer : terre rouge, calcaire, pins maritimes, chênes verts, murets de pierre sèche, oliviers en bas.
+//   Balisé serré presque de bout en bout : les troncs frôlent la rubalise. Des racines, une dalle calcaire, un pierrier,
+//   une petite marche, des marches de pierre.
 // ---------------------------------------------------------------------------------------------------------------
 // Les épingles : des traversées presque à plat en travers de la pente (cap à ±H du sens de la pente), reliées par des
 // demi-tours de R m de rayon. Le tracé est calculé (droites et arcs, un point tous les 5 m) : la courbe passe exactement
 // par ce dessin. SINGLE_MARKS garde le premier point de chaque traversée et de chaque épingle.
 const SINGLE_TURNS = 7;
+const SINGLE_SEA = -200; // l'altitude de la mer
 const SINGLE_MARKS = { legs: [], turns: [] };
 const SINGLE_CONTROL = (() => {
   const H = 1.2, R = 11, LEG = 30;
@@ -518,13 +547,18 @@ const SINGLE_CONTROL = (() => {
 const single = {
   id: 'single',
   name: 'Le Single',
-  blurb: "Environ 550 m, 1 min. Un sentier dans les sapins, à peine plus large qu'un guidon, qui descend en sept épingles : racines, pierrier, une petite marche. La rubalise serre la trace de bout en bout.",
+  blurb: "Environ 550 m, 1 min 10. Un sentier de la Riviera, comme à Finale Ligure : terre rouge, calcaire blanc, pins maritimes et chênes verts, la mer en contrebas. À peine plus large qu'un guidon, sept épingles entre les murets de pierre sèche : racines, dalle calcaire, pierrier, une petite marche, des marches de pierre.",
   control: SINGLE_CONTROL,
-  // Une pente de forêt raide (38 %), qui s'adoucit en bas.
+  scenery: 'riviera',
+  // Une pente raide (38 %) au-dessus de la mer, qui s'adoucit en bas, dans les oliviers. Plus loin, hors de la piste,
+  // le vallon descend jusqu'à la côte (la mer est à SINGLE_SEA m), entre deux crêtes qui finissent en caps.
   relief(seed) {
     const SLOPE = 0.38, VALLEY_Z = 288;
     const valley = (z) => SLOPE * z + (SLOPE - 0.05) * 8 * softplus(-(z + VALLEY_Z) / 8);
-    return (x, z) => valley(z) + 3.0 * fbm(x / 70, z / 70, 4, seed) + 0.6 * fbm(x / 12, z / 12, 2, seed + 5) + 0.0005 * x * x;
+    // (au-delà de 200 m de part et d'autre, les crêtes montent en pente régulière, pas sans fin)
+    const sides = (x) => { const a = Math.abs(x); return a < 200 ? 0.0005 * x * x : 20 + 0.2 * (a - 200); };
+    const coast = (z) => { const t = Math.max(0, -(z + 430)); return 0.14 * t * t / (t + 60); };
+    return (x, z) => valley(z) - coast(z) + 3.0 * fbm(x / 70, z / 70, 4, seed) + 0.6 * fbm(x / 12, z / 12, 2, seed + 5) + sides(x);
   },
   layout({ cpS, seg, L }) {
     const n = cpS.length;
@@ -541,13 +575,17 @@ const single = {
         { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
         { type: 'brakeBumps', a: turn(0) - 18, b: turn(0) - 9 },
         { type: 'brakeBumps', a: turn(2) - 18, b: turn(2) - 9 },
+        // La dalle calcaire : du rocher blanc, lisse, qui accroche (on la passe sans freiner).
+        { type: 'slab', name: 'la dalle calcaire', a: leg(1, 0.3), b: leg(1, 0.85) },
         { type: 'rocks', name: 'le pierrier', a: leg(3, 0.1), b: leg(3, 0.85) },
+        // Les marches de pierre : des ressauts de calcaire, une marche tous les 2 m.
+        { type: 'stairs', name: 'les marches de pierre', a: leg(6, 0.55), b: leg(6, 0.55) + 9, step: 2 },
         { type: 'brakeBumps', a: turn(4) - 18, b: turn(4) - 9 },
         { type: 'jump', kind: 'drop', name: 'la marche', a: leg(5, 0.15), lipLen: 3, lipH: 0.4, knuckle: 0.6, clear: 0.9, speed: 6.5, dig: 1.2, runout: 12 },
         { type: 'arena', a: cpS[n - 7], b: L },
       ],
-      // Des racines dans presque toutes les traversées : c'est la forêt.
-      roots: [[leg(0, 0.1), leg(0, 0.9)], [leg(1, 0.2), leg(1, 0.95)], [leg(2, 0.1), leg(2, 0.6)], [leg(4, 0.1), leg(4, 0.9)], [leg(6, 0.1), leg(6, 0.9)], [leg(7, 0.1), leg(7, 0.7)]],
+      // Des racines de pin dans presque toutes les traversées.
+      roots: [[leg(0, 0.1), leg(0, 0.9)], [leg(1, 0.05), leg(1, 0.25)], [leg(2, 0.1), leg(2, 0.6)], [leg(4, 0.1), leg(4, 0.9)], [leg(6, 0.1), leg(6, 0.45)], [leg(7, 0.1), leg(7, 0.7)]],
       // Le sentier, balisé serré : 2,2 m entre les rubalises (2,4 m dans le pierrier, entre les blocs).
       narrow: [
         // (après la grille du départ en ligne : sept rangs de trois, sur une vingtaine de mètres)
@@ -566,8 +604,32 @@ const single = {
       ],
     };
   },
-  trees: { tries: 30000 },
-  env: { treeline: null, haze: 3.6e-4, hazeHeight: 650, far: { radius: 650, step: 12 }, range: { height: 480, top: 130, ramp: 650, scale: 0.3 } },
+  // La forêt de la Riviera : pins maritimes et chênes verts ; en bas, sur les terrasses, des oliviers. Les troncs qui
+  // bordent le sentier sont des pins : leur fût est nu, rien dans la figure du pilote.
+  trees: {
+    tries: 30000,
+    // Une forêt claire, au soleil, moins serrée que celle des Alpes ; en bas, les oliveraies, des arbres espacés sur
+    // les terrasses, la vue dégagée sur la mer.
+    density: (d, x, z, clearing, y) => (y < -80 ? (d < 7 ? 0 : 0.06) : (d < 5.4 ? 0 : d < 10 ? 0.3 : d < 30 ? 0.2 : 0.12) * (1 - 0.8 * clearing)),
+    // (les chênes verts et les oliviers ont un houppier large et bas : pas à moins de 9 m du sentier)
+    kind: (r, y, d) => (d < 9 ? 'pin' : y < -80 ? (r < 0.75 ? 'olivier' : r < 0.9 ? 'pin' : 'chene') : r < 0.55 ? 'pin' : 'chene'),
+    height: (kind, h) => (kind === 'pin' ? h * 0.85 : kind === 'chene' ? 3.5 + h * 0.3 : 3 + h * 0.15),
+    edgeKind: () => 'pin',
+  },
+  // Le décor : la mer au sud (devant, en descendant), un soleil haut et chaud, peu de nuages, l'air un peu laiteux du
+  // bord de mer ; les Alpes ligures derrière. Les sols : terre rouge, calcaire, herbes sèches. Un sentier nature : pas
+  // de protections sur les troncs, pas de panneaux de virage.
+  env: {
+    treeline: 420, haze: 1.5e-4, hazeHeight: 600, clouds: 0.18,
+    far: { radius: 1700, step: 14 }, range: { height: 1100, top: 260, ramp: 1600, scale: 0.45 },
+    sea: { level: SINGLE_SEA, dir: [0, -1], open: 1.2 },
+    sun: [-0.45, 0.78, 0.42], pads: false, chevrons: false,
+    // (des troncs tout le long du sentier, trois ou quatre traversées à portée : le détail un peu plus près)
+    treeDetail: { near: 28, mid: 55 },
+    ground: { terre: [150, 84, 54], prairie: [152, 140, 80], aiguilles: [134, 96, 62], roche: [196, 190, 176], pierrier: [182, 176, 164], gravier: [178, 164, 142] },
+    flora: 'maquis',
+    banners: ['RIVIERA', 'FINALE', 'ENDURO', 'SENTIERO', 'TERRA ROSSA', 'IL MARE'],
+  },
 };
 
 export const MAPS = { foret, alpes, avalanche, bikepark, single };

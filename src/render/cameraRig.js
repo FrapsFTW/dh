@@ -5,6 +5,7 @@
 // avec le vélo (on voit le monde basculer, comme avec une caméra sur le casque).
 
 import * as THREE from 'three';
+import { WHIP } from './rider.js';
 
 export const CAMERA_SETTINGS = {
   fov: 76, // champ de vision vertical à l'arrêt (degrés)
@@ -58,9 +59,11 @@ export function createCameraRig(camera, bikeModel, sim) {
         // (Un lacet positif tourne la tête vers la gauche : stick à droite, lacet négatif.)
         lookYaw += (-look.x * 1.2 - lookYaw) * Math.min(1, dt * (Math.abs(look.x) > 0.05 ? 6 : 2.5));
         lookPitch += (-look.y * 0.6 - lookPitch) * Math.min(1, dt * (Math.abs(look.y) > 0.05 ? 6 : 2.5));
-        const wantYaw = bikeYaw + into + lookYaw;
+        // En whip, la tête suit le haut du corps, qui suit à moitié le vélo couché (voir rider.js).
+        const whip = (state.whip || 0) * WHIP.body;
+        const wantYaw = bikeYaw + into + lookYaw - WHIP.yaw * whip;
         const wantPitch = bikePitch * S.pitchFollow - (S.lookDown * Math.PI) / 180 + lookPitch;
-        const wantRoll = -state.lean * S.rollFollow;
+        const wantRoll = -state.lean * S.rollFollow - WHIP.roll * whip;
         if (first) { yaw = wantYaw; pitch = wantPitch; roll = wantRoll; }
         // La tête suit le vélo avec du retard, d'autant plus que le cou amortit (le tangage surtout : c'est lui qui
         // secoue le plus aux réceptions).

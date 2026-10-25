@@ -49,6 +49,7 @@ varying float vForest;
 varying vec3 vTrail; // x : u (mètres, travers de la piste), y : s (le long), z : la demi-largeur de la trace (0 hors piste)
 varying float vRocky; // 1 dans un pierrier
 varying float vSlab; // 1 sur une dalle de granit
+varying float vEarth; // 1 sur le terrassement d'un saut : ses flancs sont de la terre, pas de la roche
 varying float vSnow; // 1 sur un glacier
 varying float vCrev; // 1 là où il peut y avoir des crevasses (le glacier, loin du couloir)
 varying float vCobble; // 1 sur les pavés d'un village
@@ -181,6 +182,7 @@ void dh_ground(out vec3 col, out float rough, out float h, out vec3 nW) {
     dh_put(L_PIERRIER, vRocky * smoothstep(0.0, 0.4, 1.0 - au / 3.2), vec3(1.0));
     float slabW = vSlab * (1.0 - smoothstep(th + 0.6, th + 2.2, au + edge));
     dh_putRock(L_ROCHE, slabW, vec3(1.08), N);
+    dh_put(L_TERRE, vEarth * (1.0 - smoothstep(4.8, 6.0, au + edge)) * (1.0 - onTrail), vec3(0.95, 0.93, 0.9));
     // Sur le glacier, la trace est de la neige damée, striée par la dameuse et creusée d'ornières par les pneus.
     if (vSnow > 0.0) {
       float cord = 0.5 + 0.5 * sin(u * 34.0 + dh_noise(vec2(s * 0.02, 1.0)) * 6.0);
@@ -217,6 +219,7 @@ attribute float forest;
 attribute vec3 trailInfo;
 attribute float rocky;
 attribute float slab;
+attribute float earth;
 attribute vec3 extra; // x : glacier, y : crevasses, z : pavés
 varying vec3 vWPos;
 varying vec3 vWN;
@@ -224,6 +227,7 @@ varying float vForest;
 varying vec3 vTrail;
 varying float vRocky;
 varying float vSlab;
+varying float vEarth;
 varying float vSnow;
 varying float vCrev;
 varying float vCobble;`)
@@ -234,6 +238,7 @@ vForest = forest;
 vTrail = trailInfo;
 vRocky = rocky;
 vSlab = slab;
+vEarth = earth;
 vSnow = extra.x;
 vCrev = extra.y;
 vCobble = extra.z;`);
@@ -301,6 +306,7 @@ export function createGround(sim, tex, { low = false } = {}) {
   tg.setAttribute('trailInfo', new THREE.BufferAttribute(tTrail, 3));
   tg.setAttribute('rocky', new THREE.BufferAttribute(tRocky, 1));
   tg.setAttribute('slab', new THREE.BufferAttribute(new Float32Array(nT), 1));
+  tg.setAttribute('earth', new THREE.BufferAttribute(new Float32Array(nT), 1));
   // Le glacier et ses crevasses sur le relief (seulement pour le relief en bande, qui sait où il est le long de la piste).
   const tExtra = new Float32Array(nT * 3);
   if (terrain.sOf) for (let i = 0; i < nT; i++) {
@@ -318,6 +324,7 @@ export function createGround(sim, tex, { low = false } = {}) {
   const nR = ribbon.positions.length / 3;
   const rForest = new Float32Array(nR), rTrail = new Float32Array(nR * 3), rRocky = new Float32Array(nR), rSlab = new Float32Array(nR);
   const rocks = track.features.filter((f) => f.type === 'rocks'), slabs = track.features.filter((f) => f.type === 'slab');
+  const jumps = track.features.filter((f) => f.type === 'jump'), rEarth = new Float32Array(nR);
   for (let i = 0; i < nR; i++) {
     const x = ribbon.positions[i * 3], z = ribbon.positions[i * 3 + 2];
     const u = ribbon.uv[i * 2], s = ribbon.uv[i * 2 + 1];
@@ -325,11 +332,13 @@ export function createGround(sim, tex, { low = false } = {}) {
     rTrail[i * 3] = u; rTrail[i * 3 + 1] = s; rTrail[i * 3 + 2] = track.trailHalfAt(s);
     for (const f of rocks) rRocky[i] = Math.max(rRocky[i], smoothstep(f.a - 1, f.a + 2, s) * (1 - smoothstep(f.b - 2, f.b + 1, s)));
     for (const f of slabs) rSlab[i] = Math.max(rSlab[i], smoothstep(f.a - 1, f.a + 1, s) * (1 - smoothstep(f.b - 1, f.b + 1, s)));
+    for (const f of jumps) rEarth[i] = Math.max(rEarth[i], smoothstep(f.a - 2, f.a, s) * (1 - smoothstep(f.b - 4, f.b, s)));
   }
   rg.setAttribute('forest', new THREE.BufferAttribute(rForest, 1));
   rg.setAttribute('trailInfo', new THREE.BufferAttribute(rTrail, 3));
   rg.setAttribute('rocky', new THREE.BufferAttribute(rRocky, 1));
   rg.setAttribute('slab', new THREE.BufferAttribute(rSlab, 1));
+  rg.setAttribute('earth', new THREE.BufferAttribute(rEarth, 1));
   const rExtra = new Float32Array(nR * 3);
   for (let i = 0; i < nR; i++) { const s = ribbon.uv[i * 2 + 1]; rExtra[i * 3] = snowAt(s); rExtra[i * 3 + 2] = cobbleAt(s); }
   rg.setAttribute('extra', new THREE.BufferAttribute(rExtra, 3));
@@ -378,6 +387,7 @@ function createFarTerrain(track, terrain, env, material) {
   g.setAttribute('trailInfo', new THREE.BufferAttribute(new Float32Array(n * n * 3), 3));
   g.setAttribute('rocky', new THREE.BufferAttribute(new Float32Array(n * n), 1));
   g.setAttribute('slab', new THREE.BufferAttribute(new Float32Array(n * n), 1));
+  g.setAttribute('earth', new THREE.BufferAttribute(new Float32Array(n * n), 1));
   g.setAttribute('extra', new THREE.BufferAttribute(new Float32Array(n * n * 3), 3));
   g.setIndex(idx);
   g.computeVertexNormals();
@@ -412,6 +422,7 @@ function createFarTerrain(track, terrain, env, material) {
   sg.setAttribute('trailInfo', new THREE.BufferAttribute(new Float32Array(nSkirt * 3), 3));
   sg.setAttribute('rocky', new THREE.BufferAttribute(new Float32Array(nSkirt), 1));
   sg.setAttribute('slab', new THREE.BufferAttribute(new Float32Array(nSkirt), 1));
+  sg.setAttribute('earth', new THREE.BufferAttribute(new Float32Array(nSkirt), 1));
   sg.setAttribute('extra', new THREE.BufferAttribute(new Float32Array(nSkirt * 3), 3));
   sg.setIndex(sIdx);
   sg.computeVertexNormals();

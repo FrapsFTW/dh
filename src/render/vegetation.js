@@ -1,4 +1,5 @@
-// Le sous-bois : herbes, fleurs, fougères, rochers, troncs couchés (les arbres sont dans trees.js).
+// Le sous-bois : herbes, fleurs, fougères, rochers, troncs couchés (les arbres sont dans trees.js). Selon la carte, des
+// épilobes (la côte Pacifique) ou le maquis (la Riviera : genêt, lavande, lentisques, herbe sèche).
 // Tout est en instances, regroupées par zones de 80 m : ce qui est hors du champ n'est pas dessiné, les herbes et les
 // fleurs pas au-delà de 220 m, les rochers pas au-delà de 900 m. En montagne, au-dessus des arbres, des blocs plus gros
 // et plus nombreux.
@@ -100,12 +101,13 @@ function blade(ctx, S, rand, x0, h, w, bend, base, tip) {
   ctx.fill();
 }
 
-function drawGrass(flowers) {
+/** L'herbe (dryShare : la part des brins secs ; plus au soleil du Midi). */
+function drawGrass(flowers, dryShare = 0.16) {
   return (ctx, S) => {
     const rand = rng(flowers ? 5 : 3);
     for (let i = 0; i < 150; i++) {
       const x0 = S * (0.12 + rand() * 0.76), h = S * (0.3 + rand() * rand() * 0.68 + 0.02), bend = (rand() - 0.5) * S * 0.4;
-      const dry = rand() < 0.16;
+      const dry = rand() < dryShare;
       const hue = dry ? 44 + rand() * 10 : 72 + rand() * 22, sat = dry ? 30 + rand() * 12 : 38 + rand() * 18;
       const l = dry ? 48 + rand() * 14 : 30 + rand() * 16;
       blade(ctx, S, rand, x0, h, S * (0.012 + rand() * 0.016), bend,
@@ -165,6 +167,86 @@ function drawFern(ctx, S) {
         ctx.fill();
       }
     }
+  }
+}
+
+/** Une tige droite, un peu penchée, de (x0, S) jusqu'à la hauteur h ; renvoie le point à la fraction t. */
+function stem(ctx, S, x0, h, lean, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x0, S); ctx.quadraticCurveTo(x0 + lean * 0.3, S - h * 0.5, x0 + lean, S - h); ctx.stroke();
+  return (t) => [x0 + lean * t * t, S - h * t];
+}
+
+// L'épilobe (Le Bike Park) : de hautes tiges aux feuilles étroites, l'épi rose magenta en haut, boutons plus sombres au
+// bout. C'est elle qui couvre les pistes de ski de la côte Pacifique en été.
+function drawFireweed(ctx, S) {
+  const rand = rng(21);
+  for (let i = 0; i < 70; i++) { // l'herbe au pied
+    const x0 = S * (0.15 + rand() * 0.7), h = S * (0.12 + rand() * 0.2);
+    blade(ctx, S, rand, x0, h, S * 0.012, (rand() - 0.5) * S * 0.15, 'hsl(85, 30%, 20%)', { mid: 'hsl(82, 40%, 34%)', end: 'hsl(76, 44%, 42%)' });
+  }
+  for (let k = 0; k < 7; k++) {
+    const x0 = S * (0.2 + rand() * 0.6), h = S * (0.62 + rand() * 0.34), lean = (rand() - 0.5) * S * 0.12;
+    const at = stem(ctx, S, x0, h, lean, 'hsl(345, 30%, 32%)', S * 0.006);
+    for (let j = 0; j < 16; j++) { // les feuilles, de plus en plus petites vers le haut
+      const t = 0.1 + (j / 16) * 0.5, [x, y] = at(t), side = j % 2 ? 1 : -1, len = S * (0.09 - t * 0.08);
+      ctx.fillStyle = `hsl(${92 + rand() * 12}, ${34 + rand() * 10}%, ${24 + rand() * 10}%)`;
+      ctx.beginPath(); ctx.ellipse(x + side * len * 0.5, y + len * 0.15, len * 0.5, S * 0.006, side * 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let j = 0; j < 26; j++) { // l'épi : fleurs ouvertes en bas, boutons en haut
+      const t = 0.62 + (j / 26) * 0.38, [x, y] = at(t), open = t < 0.9;
+      const r = S * (open ? 0.012 + rand() * 0.006 : 0.006);
+      ctx.fillStyle = open ? `hsl(${322 + rand() * 14}, ${62 + rand() * 14}%, ${52 + rand() * 12}%)` : `hsl(335, 45%, ${32 + rand() * 8}%)`;
+      for (let p = 0; p < (open ? 4 : 1); p++) {
+        const a = p * 1.57 + rand(), d = open ? r * 0.8 : 0;
+        ctx.beginPath(); ctx.arc(x + Math.cos(a) * d + (rand() - 0.5) * S * 0.02, y + Math.sin(a) * d * 0.6, r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+}
+
+// Le genêt (la Riviera) : un buisson de tiges vertes, raides, couvertes de petites fleurs jaune vif.
+function drawBroom(ctx, S) {
+  const rand = rng(23);
+  for (let k = 0; k < 40; k++) {
+    const x0 = S * (0.42 + (rand() - 0.5) * 0.25), h = S * (0.45 + rand() * 0.5), lean = (rand() - 0.5) * S * 0.75;
+    const at = stem(ctx, S, x0, h, lean, `hsl(${95 + rand() * 15}, ${30 + rand() * 12}%, ${22 + rand() * 10}%)`, S * (0.004 + rand() * 0.003));
+    for (let j = 0; j < 9; j++) {
+      const t = 0.45 + rand() * 0.55, [x, y] = at(t);
+      ctx.fillStyle = `hsl(${46 + rand() * 8}, ${80 + rand() * 15}%, ${52 + rand() * 12}%)`;
+      ctx.beginPath(); ctx.ellipse(x, y, S * 0.011, S * 0.008, rand() * 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// La lavande : une touffe gris-vert, des tiges fines et leurs épis violets.
+function drawLavender(ctx, S) {
+  const rand = rng(25);
+  for (let i = 0; i < 90; i++) {
+    const x0 = S * (0.25 + rand() * 0.5), h = S * (0.15 + rand() * 0.2);
+    blade(ctx, S, rand, x0, h, S * 0.01, (rand() - 0.5) * S * 0.3, 'hsl(95, 12%, 26%)', { mid: 'hsl(100, 14%, 44%)', end: 'hsl(105, 16%, 56%)' });
+  }
+  for (let k = 0; k < 34; k++) {
+    const x0 = S * (0.3 + rand() * 0.4), h = S * (0.4 + rand() * 0.35), lean = (rand() - 0.5) * S * 0.55;
+    const at = stem(ctx, S, x0, h, lean, 'hsl(100, 14%, 38%)', S * 0.003);
+    for (let j = 0; j < 7; j++) {
+      const [x, y] = at(0.82 + j * 0.026);
+      ctx.fillStyle = `hsl(${262 + rand() * 16}, ${36 + rand() * 14}%, ${42 + rand() * 12}%)`;
+      ctx.beginPath(); ctx.ellipse(x, y, S * 0.008, S * 0.011, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// Le lentisque, l'arbousier : un buisson rond et dense de petites feuilles vert sombre, luisantes.
+function drawShrub(ctx, S) {
+  const rand = rng(27);
+  for (let i = 0; i < 900; i++) {
+    const a = rand() * Math.PI, r = Math.sqrt(rand());
+    const x = S * 0.5 + Math.cos(a) * r * S * 0.46, y = S - Math.sin(a) * r * S * 0.8;
+    const l = 16 + rand() * 18 + (1 - y / S) * 14; // plus clair en haut, au soleil
+    ctx.fillStyle = `hsl(${88 + rand() * 25}, ${24 + rand() * 16}%, ${l}%)`;
+    ctx.beginPath(); ctx.ellipse(x, y, S * 0.014, S * 0.008, rand() * 3, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -247,15 +329,20 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
   const kinds = {};
 
   // ----- Le sous-bois : herbes, fleurs, fougères, le long de la piste et dans les prairies -----
-  const grassMat = windMaterial(cardTexture(drawGrass(false)), sunDir);
+  // La flore de la carte (env.flora) : 'epilobe' (Le Bike Park), 'maquis' (Le Single, sans fougères), sinon la forêt
+  // des Alpes.
+  const flora = track.map.env.flora || null;
+  const grassMat = windMaterial(cardTexture(drawGrass(false, flora === 'maquis' ? 0.6 : 0.16)), sunDir);
   const flowerMat = windMaterial(cardTexture(drawGrass(true)), sunDir);
   const fernMat = windMaterial(cardTexture(drawFern), sunDir);
   const tuft = tuftGeometry();
   kinds.grass = { geometry: tuft, material: grassMat, near: true };
   kinds.flowers = { geometry: tuft, material: flowerMat, near: true };
   kinds.fern = { geometry: tuft, material: fernMat, near: true };
+  const extra = flora === 'epilobe' ? [['epilobe', drawFireweed]] : flora === 'maquis' ? [['genet', drawBroom], ['lavande', drawLavender], ['buisson', drawShrub]] : [];
+  for (const [name, draw] of extra) kinds[name] = { geometry: tuft, material: windMaterial(cardTexture(draw), sunDir), near: true };
   const B = track.bounds;
-  const winds = [grassMat, flowerMat, fernMat];
+  const winds = Object.values(kinds).map((k) => k.material);
   // Au hasard dans le rectangle de la piste, ou dans sa bande (les longues pistes).
   const anywhere = () => {
     if (track.band === null) return [B.xmin + rand() * (B.xmax - B.xmin), B.zmin + rand() * (B.zmax - B.zmin)];
@@ -292,21 +379,27 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     const forest = forestAt(x, z);
     const n = fbm(x / 9, z / 9, 2, 31) * 0.5 + 0.5;
     let kind;
-    if (forest > 0.45) { if (rand() > 0.55) continue; kind = 'fern'; }
+    if (flora === 'maquis') {
+      // Le maquis : sous les arbres, des buissons ; au soleil, l'herbe sèche, le genêt et la lavande par plaques.
+      if (forest > 0.45) { if (rand() > 0.5) continue; kind = 'buisson'; }
+      else kind = n > 0.6 ? (rand() < 0.5 ? 'genet' : 'lavande') : rand() < 0.15 ? 'buisson' : 'grass';
+    } else if (forest > 0.45) { if (rand() > 0.55) continue; kind = 'fern'; }
+    else if (flora === 'epilobe' && n > 0.6 && rand() < 0.7) kind = 'epilobe'; // des nappes d'épilobes dans la piste de ski
     else kind = n > 0.62 && rand() < 0.5 ? 'flowers' : rand() < 0.12 ? 'fern' : 'grass';
     const y = track.groundY(x, z);
-    const size = kind === 'fern' ? 0.7 + rand() * 0.6 : 0.35 + rand() * 0.45 + (1 - forest) * 0.15;
+    const big = kind === 'fern' || kind === 'buisson' || kind === 'genet';
+    const size = kind === 'epilobe' ? 0.9 + rand() * 0.7 : big ? 0.7 + rand() * 0.6 : 0.35 + rand() * 0.45 + (1 - forest) * 0.15;
     q.setFromAxisAngle(up, rand() * Math.PI);
     col.setScalar(0.75 + rand() * 0.4);
     // En altitude, l'herbe est rase et jaunie ; sous les arbres, plus sombre.
     if (treeline !== null) col.multiply(dryTint.setRGB(1, 1, 1).lerp(DRY, smoothstep(treeline - 80, treeline + 30, y)));
     col.multiplyScalar(1 - 0.3 * forest);
-    tiles.add(kind, x, z, m4.compose(p.set(x, y - 0.03, z), q, s.set(size * (kind === 'fern' ? 1.5 : 1.2), size, size * (kind === 'fern' ? 1.5 : 1.2))), col);
+    tiles.add(kind, x, z, m4.compose(p.set(x, y - 0.03, z), q, s.set(size * (big ? 1.5 : 1.2), size, size * (big ? 1.5 : 1.2))), col);
     placed++;
   }
 
   // ----- Les rochers et les troncs couchés -----
-  const rockMat = rockMaterial(groundTextures, { moss: treeline === null ? 0.55 : 0.35, alpine: treeline !== null });
+  const rockMat = rockMaterial(groundTextures, { moss: flora === 'maquis' ? 0.1 : treeline === null ? 0.55 : 0.35, alpine: treeline !== null });
   const ROCKS = ['rockA', 'rockB', 'rockC', 'rockD'];
   ROCKS.forEach((name, i) => { kinds[name] = { geometry: rockGeometry(i + 1, { detail: 2, cuts: 5 + i }), far: rockGeometry(i + 1, { detail: 1, cuts: 5 + i }), lod: 120, material: rockMat, castShadow: true, receiveShadow: true, range: 900 }; });
   const rockCount = Math.round(1400 * more * (treeline === null ? 1 : 1.8));

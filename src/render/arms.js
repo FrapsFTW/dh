@@ -69,7 +69,9 @@ function addSleeveBands(mat, kit) {
 
 /**
  * Charge les bras et les ajoute à `parent` (le groupe du pilote, dans le repère du vélo). Renvoie { ready, update }.
- * update(shoulderMid, steerQ) : shoulderMid, le milieu des épaules, et steerQ, la rotation du cintre (repère du vélo).
+ * update(shoulderMid, steerQ, style, bodyQ) : shoulderMid, le milieu des épaules, et steerQ, la rotation du cintre
+ * (repère du vélo) ; en whip, style ({ q, pivot } : le vélo couché autour des hanches) et bodyQ, la rotation des
+ * épaules qui le suivent.
  */
 export function createDetailedArms(parent, kit = KIT) {
   const state = { loaded: false };
@@ -140,7 +142,7 @@ export function createDetailedArms(parent, kit = KIT) {
       }
       m.geometry.setAttribute('armD', new THREE.BufferAttribute(armD, 1));
     }
-    Object.assign(state, { root, meshes, arm, mid0, rest: new Map(skeleton.bones.map((b) => [b, b.quaternion.clone()])), loaded: true });
+    Object.assign(state, { root, meshes, arm, mid0, rootQ: root.quaternion.clone(), rest: new Map(skeleton.bones.map((b) => [b, b.quaternion.clone()])), loaded: true });
     parent.add(root);
     return true;
   }).catch((e) => { console.warn('Bras détaillés indisponibles :', e.message); return false; });
@@ -187,25 +189,34 @@ export function createDetailedArms(parent, kit = KIT) {
 
   const G = GEOMETRY;
   const pivot = v(0, G.steerPivot.y, G.steerPivot.z);
-  const parentQ = new THREE.Quaternion(), barQ = new THREE.Quaternion();
+  const parentQ = new THREE.Quaternion(), barQ = new THREE.Quaternion(), elbowQ = new THREE.Quaternion(), _m = v();
   return {
     ready,
     get loaded() { return state.loaded; },
     set visible(on) { if (state.root) state.root.visible = on; },
-    update(shoulderMid, steerQ) {
+    update(shoulderMid, steerQ, style = null, bodyQ = null) {
       if (!state.loaded) return;
-      const { root, arm, mid0, rest } = state;
+      const { root, arm, mid0, rootQ, rest } = state;
       for (const [b, q] of rest) b.quaternion.copy(q);
-      root.position.copy(shoulderMid).sub(mid0);
+      // (en whip, la ligne des épaules tourne avec le haut du corps, autour de leur milieu)
+      if (bodyQ) root.quaternion.copy(bodyQ).multiply(rootQ);
+      else root.quaternion.copy(rootQ);
+      root.position.copy(shoulderMid).sub(bodyQ ? _m.copy(mid0).applyQuaternion(bodyQ) : mid0);
       root.updateWorldMatrix(true, true);
       // Les cibles sont calculées dans le repère du vélo, puis passées dans celui du monde (celui des os).
       const M = parent.matrixWorld;
       parent.getWorldQuaternion(parentQ);
-      barQ.copy(parentQ).multiply(steerQ);
+      barQ.copy(parentQ);
+      if (style) barQ.multiply(style.q);
+      barQ.multiply(steerQ);
+      elbowQ.copy(parentQ);
+      if (bodyQ) elbowQ.multiply(bodyQ);
       const barX = v(1, 0, 0).applyQuaternion(barQ), barY = v(0, 1, 0).applyQuaternion(barQ), barZ = v(0, 0, 1).applyQuaternion(barQ);
       for (const a of Object.values(arm)) {
         const s = a.s;
-        const grip = v(s * G.grips.halfWidth, G.grips.y, G.grips.z).sub(pivot).applyQuaternion(steerQ).add(pivot).applyMatrix4(M);
+        const grip = v(s * G.grips.halfWidth, G.grips.y, G.grips.z).sub(pivot).applyQuaternion(steerQ).add(pivot);
+        if (style) grip.sub(style.pivot).applyQuaternion(style.q).add(style.pivot);
+        grip.applyMatrix4(M);
         // La main au repos : du poignet aux jointures du majeur, et de l'index vers l'auriculaire.
         const wrist0 = worldPos(a.hand), mid0f = worldPos(a.fingers[1][0]), idx0 = worldPos(a.fingers[0][0]), pnk0 = worldPos(a.fingers[3][0]);
         const handLen = wrist0.distanceTo(mid0f);
@@ -217,7 +228,7 @@ export function createDetailedArms(parent, kit = KIT) {
         const wrist = knuckles.clone().addScaledVector(v().addScaledVector(barZ, Math.cos(rise)).addScaledVector(barY, Math.sin(rise)).normalize(), handLen);
         // Le bras jusqu'au poignet, coudes sortis et un peu bas.
         const shoulder = worldPos(a.upper);
-        const elbow = solveTwoBone(shoulder, wrist, a.L1, a.L2, v(s * 0.6, -0.5, 0.4).applyQuaternion(parentQ), v());
+        const elbow = solveTwoBone(shoulder, wrist, a.L1, a.L2, v(s * 0.6, -0.5, 0.4).applyQuaternion(elbowQ), v());
         aim(a.upper, elbow, a.fore);
         aim(a.fore, wrist, a.foreEnd);
         a.handCtl.position.copy(a.handCtl.parent.worldToLocal(wrist.clone())); // la main pend d'un os de contrôle

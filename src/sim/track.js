@@ -224,6 +224,12 @@ export function createTrack(seed = 7, mapId = 'foret') {
     f.prof = Float32Array.from(prof);
     f.b = f.a + (prof.length - 1) * DS;
     f.lipS = lipS;
+    // Un module en bois (look 'bois', façon North Shore) : la lèvre, et pour un gap la réception, sont des planches.
+    if (f.look === 'bois') {
+      f.wood = [[f.a + 0.5, lipS]];
+      if (f.kind === 'gap') f.wood.push([lipS + f.knuckle - 1.2, lipS + touch + lineLen * 0.7]);
+      if (f.kind === 'drop') f.wood[0][0] = f.a - 4; // (un tablier qui part de plus loin, à plat, avant de monter)
+    }
   }
 
   // ---------- Recherche du point le plus proche sur le tracé ----------
@@ -351,6 +357,7 @@ export function createTrack(seed = 7, mapId = 'foret') {
   // Le sol de la piste par tronçons : dalles et ponts sur toute la largeur, graviers en altitude…
   const zones = [
     ...bridges.map((f) => ({ a: f.a, b: f.b, surface: SURFACES.bois, whole: true })),
+    ...features.filter((f) => f.wood).flatMap((f) => f.wood.map(([a, b]) => ({ a, b, surface: SURFACES.bois, whole: true }))),
     ...featureOf('slab').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.roche, whole: true })),
     ...featureOf('ford').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.eau, whole: true })),
     ...featureOf('road').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.gravier, whole: true })),
@@ -502,7 +509,9 @@ export function createTrack(seed = 7, mapId = 'foret') {
   const nearBuilding = (x, z, m) => buildings.some((b) => Math.hypot(x - b.x, z - b.z) < Math.max(b.w, b.d) / 2 + m);
 
   const trees = [];
-  const treeline = map.trees.treeline ?? null;
+  // Une carte peut choisir ses essences (kind), leur densité (density) et leur hauteur (height) : voir maps.js.
+  const T = map.trees;
+  const treeline = T.treeline ?? null;
   // Plus haut, rien que des sapins ; en bas des montagnes, plus de feuillus.
   const sapinShare = (y) => (treeline === null ? 0.82 : 0.6 + 0.4 * smoothstep(treeline - 160, treeline - 40, y));
   const TREE_CELL = 4;
@@ -518,11 +527,11 @@ export function createTrack(seed = 7, mapId = 'foret') {
       1 - smoothstep(30, 55, Math.hypot(x - arenaCenter.x, z - arenaCenter.z)),
       1 - smoothstep(18, 34, Math.hypot(x - startCenter.x, z - startCenter.z)),
     );
-    let prob = d < 5.4 ? 0 : d < 10 ? 0.6 : d < 30 ? 0.3 : 0.12;
-    prob *= (1 - clearing) * (1 - open);
+    const ground = terrainHeight(x, z, d < 30 ? sample(p.s).d : 0, d);
+    let prob = T.density ? T.density(d, x, z, clearing, ground) : (d < 5.4 ? 0 : d < 10 ? 0.6 : d < 30 ? 0.3 : 0.12) * (1 - clearing);
+    prob *= 1 - open;
     // En montagne, la forêt s'arrête vers une altitude (la limite est irrégulière) ; juste en dessous, les arbres
     // rapetissent, au-dessus il n'en reste que quelques-uns, isolés.
-    const ground = terrainHeight(x, z, d < 30 ? sample(p.s).d : 0, d);
     let stunt = 0;
     if (treeline !== null && prob > 0) {
       const yt = treeline + 16 * fbm(x / 70, z / 70, 2, seed + 41);
@@ -531,7 +540,9 @@ export function createTrack(seed = 7, mapId = 'foret') {
     }
     if (rand() > prob) continue;
     const h = (9 + rand() * 13) * (1 - 0.55 * stunt), r = (0.18 + rand() * 0.22) * (1 - 0.4 * stunt);
-    const t = { x, z, y: ground - 0.15, h, r, hue: rand(), kind: rand() < sapinShare(ground) ? 'sapin' : 'feuillu' };
+    const hue = rand(), pick = rand();
+    const kind = T.kind ? T.kind(pick, ground, d) : pick < sapinShare(ground) ? 'sapin' : 'feuillu';
+    const t = { x, z, y: ground - 0.15, h: T.height ? T.height(kind, h, hue) : h, r, hue, kind };
     trees.push(t);
     const kk = key(Math.floor(x / TREE_CELL), Math.floor(z / TREE_CELL));
     let arr = treeGrid.get(kk);
@@ -556,7 +567,9 @@ export function createTrack(seed = 7, mapId = 'foret') {
           const ground = terrainHeight(x, z, f.d, Math.abs(u));
           if (w.edge === 'arbres') {
             if (treeNear(x, z, 0.8)) continue;
-            const t = { x, z, y: ground - 0.15, h: 11 + r2() * 12, r, hue: r2(), kind: r2() < 0.85 ? 'sapin' : 'feuillu' };
+            const h = 11 + r2() * 12, hue = r2(), pick = r2();
+            const kind = T.edgeKind ? T.edgeKind(pick) : pick < 0.85 ? 'sapin' : 'feuillu';
+            const t = { x, z, y: ground - 0.15, h: T.height ? T.height(kind, h, hue) : h, r, hue, kind };
             trees.push(t);
             const kk = key(Math.floor(x / TREE_CELL), Math.floor(z / TREE_CELL));
             let arr = treeGrid.get(kk);
@@ -682,7 +695,7 @@ export function createTrack(seed = 7, mapId = 'foret') {
   }
 
   return {
-    seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null, peloton: map.peloton || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
+    seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null, peloton: map.peloton || null, lift: map.lift || null, scenery: map.scenery || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
     natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight, tapeAt, trailHalfAt, narrowAt, narrows, vmaxAt, trailDist, trailS, band,
     features, roots, rocks, bridges, onBridge, gates, respawns, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
     bounds, trees, treeNear, boulders, buildings, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,

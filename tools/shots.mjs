@@ -44,6 +44,11 @@ const jobs = quick
     ['alpes-pont', '?carte=alpes&autopilot&shot&cam=chase&depart=1158&vitesse=7', [0.8]],
     ['alpes-autoroute', '?carte=alpes&autopilot&shot&depart=1790&vitesse=12', [0.5]],
     ['alpes-arrivee', '?carte=alpes&autopilot&shot&cam=chase&depart=2225&vitesse=10', [3.2]],
+    // Le Bike Park (les doubles, le télésiège) et Le Single (les terrasses, les maisons, la mer).
+    ['bikepark-doubles', '?carte=bikepark&autopilot&shot&cam=chase&depart=650&vitesse=11', [1.2]],
+    ['bikepark-whip', '?carte=bikepark&autopilot&shot&cam=chase&mode=normal&figure=whip&depart=1040&vitesse=12', [4.3]],
+    ['single-dalle', '?carte=single&autopilot&shot&depart=100&vitesse=6', [1.5]],
+    ['single-arrivee', '?carte=single&autopilot&shot&depart=470&vitesse=6', [4]],
   ];
 try {
   for (const [name, query, waits] of jobs) {

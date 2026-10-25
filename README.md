@@ -2,8 +2,9 @@
 
 Une manche de descente VTT chronométrée, comme en Coupe du monde, dans le navigateur. Le vélo est entièrement
 simulé : on dose les freins, le poids et l'inclinaison, et c'est le grip des pneus qui décide. Cinq pistes : La Forêt
-(884 m), La Grande Combe (2,3 km de haute montagne), L'Avalanche (5 km, du glacier au village), Le Bike Park (1,2 km
-de gros sauts) et Le Single (un sentier étroit en épingles).
+(884 m), La Grande Combe (2,3 km de haute montagne), L'Avalanche (5 km, du glacier au village), Le Bike Park (des sauts de
+toutes les formes, comme à Whistler) et Le Single (un sentier étroit en épingles au-dessus de la mer, sur la
+Riviera).
 
 ## Lancer le jeu
 
@@ -175,14 +176,28 @@ glacier du Pic Blanc). Le départ en ligne y est choisi par défaut : sept de fr
   le bike park et ses tables, le road gap.
 - Le village : une ruelle pavée entre les maisons de pierre, une volée de marches, l'arrivée sur la place.
 
-**Le Bike Park** (1,2 km, environ 1 min 30, quatre intermédiaires). Un alpage régulier à 21 %, une dizaine de gros
-sauts reliés par des berms (des virages relevés, qu'on prend vite) : la ligne des trois tables, un step-down et le
-grand gap, deux doubles, des bosses et un road gap, et le Big One devant l'arrivée, le plus gros saut du jeu (près
-d'une seconde et demie en l'air), pour un backflip, un 360 ou un gros whip.
+**Le Bike Park** (1,2 km, environ 1 min 40, quatre intermédiaires), comme la A-Line de Whistler, dans les montagnes
+de la côte Pacifique : une piste de ski taillée dans une forêt de douglas de 25 à 40 m, couverte d'épilobes roses en
+été, le télésiège au-dessus (pylônes, câble, sièges qui tournent, vélos accrochés derrière), des glaciers au loin.
+Des berms (des virages relevés, qu'on prend vite) bordés de filets orange, un panneau avant chaque saut, et des sauts
+tous différents :
 
-**Le Single** (environ 550 m, 1 min, trois intermédiaires). Un sentier dans les sapins sur une pente à 38 %, à peine
-plus large qu'un guidon : 2,2 m entre les rubalises presque de bout en bout, les troncs qui les frôlent. Sept
-épingles de 11 m de rayon reliées par des traversées, des racines, un pierrier bordé de blocs, une petite marche.
+- le kicker en bois (une lèvre de planches sur pilotis), une table, un step-up (on se pose plus haut qu'on n'a
+  décollé) ;
+- un step-down, le gap en bois façon North Shore (lèvre et réception en planches, un trou entre les deux) ;
+- trois doubles, deux buttes de terre et un trou creusé entre elles ;
+- des bosses, le drop en bois (un tablier sur pilotis qui finit dans le vide), le road gap ;
+- le Big One devant l'arrivée, le plus gros saut du jeu (plus d'une seconde en l'air), pour un backflip, un 360 ou
+  un gros whip ; la foule et la tour du speaker du concours de whips. En bas, les chalets de la station.
+
+À côté de la ligne, une passerelle North Shore et son wallride.
+
+**Le Single** (environ 550 m, 1 min 10, trois intermédiaires), comme à Finale Ligure, sur la Riviera : une pente à
+38 % au-dessus de la mer, de la terre rouge, du calcaire blanc, des pins maritimes et des chênes verts, le maquis
+(genêt, lavande, lentisques), les murets de pierre sèche des anciennes terrasses et leurs oliviers, des maisons
+ligures (crépi pastel, tuiles, volets verts) et une chapelle. Le sentier est à peine plus large qu'un guidon : 2,2 m
+entre les rubalises presque de bout en bout, des pins qui les frôlent. Sept épingles de 11 m de rayon reliées par des
+traversées, des racines, une dalle calcaire, un pierrier bordé de blocs, une petite marche, des marches de pierre.
 
 Une piste aussi longue que L'Avalanche n'a de relief détaillé (avec sa physique), d'arbres et de décor que dans une bande de 60 m
 autour d'elle ; au-delà, le relief lointain. Le glacier, la remontée, le gué, les marches et le village sont des
@@ -260,6 +275,14 @@ ombré, pente et virages) et `node tools/jumps.mjs alpes` vérifie chaque saut.
 - `src/render/course.js` : rubalise, cabane de départ et son horloge, arches, radar, aire d'arrivée, panneaux, le pont
   et le torrent ; le public, en quatre postures (bras levé, téléphone tendu…) ; les maisons du village en photos de
   pierre, de crépi, de lauze et de bois.
+- `src/render/woodwork.js` : les modules en bois (`look: 'bois'`) : tablier de planches qui suit le profil, joues,
+  pilotis, front du drop.
+- `src/render/lift.js` : le télésiège du Bike Park ; `src/render/scenery.js` : ce qui fait l'identité d'une piste
+  (`scenery` dans `maps.js`) : filets, panneaux, passerelle North Shore et chalets du Bike Park ; murets, marches de
+  pierre, maisons ligures et chapelle du Single.
+- Chaque carte choisit dans `maps.js` ses essences (`trees.kind` : sapins, douglas, pins maritimes, chênes verts,
+  oliviers), sa flore (`env.flora`), la teinte de ses sols (`env.ground`), son soleil (`env.sun`) et, s'il y a lieu, sa
+  mer (`env.sea`).
 - `src/render/bikeModel.js` et `src/render/rider.js` : le vélo (le modèle 3D fourni) et le pilote articulé, avec sa
   tenue (maillot à motif, casque intégral et masque, genouillères, dossard). Ses hanches suivent le vélo avec un
   ressort (les jambes amortissent), il reste plus droit que le vélo en virage, la tête regarde où il va, pied extérieur

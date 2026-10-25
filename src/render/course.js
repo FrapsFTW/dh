@@ -8,6 +8,9 @@ import { rng, fbm } from '../sim/noise.js';
 import { TAPE_U, TRAIL_HALF } from '../sim/track.js';
 import { rockGeometry, rockMaterial, iceMaterial } from './rocks.js';
 import { NOISE_GLSL } from './glsl.js';
+import { createLift } from './lift.js';
+import { createScenery } from './scenery.js';
+import { createWoodwork } from './woodwork.js';
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
@@ -288,7 +291,7 @@ transformed.y += w * 0.01 * flex;`);
   }
 
   // ---------- La lèvre du drop : une dalle de rocher ----------
-  for (const f of track.features.filter((f) => f.type === 'jump' && f.kind === 'drop' && f.look !== 'terre')) {
+  for (const f of track.features.filter((f) => f.type === 'jump' && f.kind === 'drop' && !f.look)) {
     for (let u = -TRAIL_HALF - 0.6; u <= TRAIL_HALF + 0.6; u += 0.9) {
       const fr = frameAt(track, f.lipS - 0.2, u);
       const r = 0.55 + rand() * 0.25;
@@ -313,7 +316,8 @@ transformed.y += w * 0.01 * flex;`);
     }
   }, true).tex;
   gravel.repeat.set(1, 1);
-  for (const f of track.features.filter((f) => f.type === 'jump' && f.kind === 'gap')) {
+  // (seulement sous un vrai road gap : pas sous un double, creusé, ni sous un gap en bois)
+  for (const f of track.features.filter((f) => f.type === 'jump' && f.kind === 'gap' && !f.look)) {
     const sRoad = f.lipS + f.knuckle / 2;
     const fr = frameAt(track, sRoad);
     const pos = [], uv = [], idx = [];
@@ -614,7 +618,7 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
 
     // Barrières le long des 70 derniers mètres, banderoles et public derrière.
     const fenceGeo = new THREE.BoxGeometry(0.04, 1.1, 2.4);
-    const bannersTxt = ['COUPE DES ALPES', 'DESCENTE', 'ALTITUDE 1800', 'FULL GAZ', 'TOUT SCHUSS', 'LA PISTE NOIRE'];
+    const bannersTxt = track.map.env.banners || ['COUPE DES ALPES', 'DESCENTE', 'ALTITUDE 1800', 'FULL GAZ', 'TOUT SCHUSS', 'LA PISTE NOIRE'];
     const bannerCols = ['#1d5fb8', '#c4161c', '#202020', '#e0a21b', '#1f8a3b', '#6b2fb3'];
     const bannerTexs = bannersTxt.map((t, i) => new THREE.MeshStandardMaterial({ map: bannerTexture(t, bannerCols[i], '#ffffff', 1024, 160), roughness: 0.7 }));
     const fenceMats = [];
@@ -657,11 +661,11 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
       group.add(flag);
     }
   }
-  // Du public aussi aux endroits spectaculaires : drop, road gap, pierrier.
+  // Du public aussi aux endroits spectaculaires : drop, road gap, pierrier, et les sauts qui en attirent (f.crowd).
   for (const f of track.features) {
-    if (!(f.type === 'rocks' || (f.type === 'jump' && f.kind !== 'table'))) continue;
-    const s0 = f.type === 'rocks' ? f.a : f.lipS - 4, s1 = f.type === 'rocks' ? f.b : f.lipS + 16;
-    for (let k = 0; k < 26; k++) {
+    if (!(f.type === 'rocks' || (f.type === 'jump' && (f.kind !== 'table' || f.crowd)))) continue;
+    const s0 = f.type === 'rocks' ? f.a : f.lipS - 4, s1 = f.type === 'rocks' ? f.b : f.lipS + (f.crowd ? 30 : 16);
+    for (let k = 0; k < (f.crowd || (track.map.env.spotCrowd ?? 26)); k++) {
       const s = s0 + rand() * (s1 - s0), side = rand() < 0.5 ? -1 : 1;
       const pf = frameAt(track, s, side * (track.tapeAt(s) + 1.2 + rand() * 3.5));
       if (track.treeNear(pf.pos.x, pf.pos.z, 0.5)) continue;
@@ -917,10 +921,21 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
     }
   }
 
+  // ---------- Le télésiège (Le Bike Park), et ce qui fait l'identité de la piste (scenery.js) ----------
+  if (track.map.lift) {
+    const lift = createLift(track, track.map.lift);
+    group.add(lift.group);
+    dynamic.push((t) => lift.update(t));
+  }
+  if (track.map.scenery) group.add(createScenery(track).group);
+  group.add(createWoodwork(track).group);
+
   // ---------- Protections sur les arbres proches de la piste, panneaux avant les virages ----------
+  // (pas sur un sentier nature : env.pads, env.chevrons à false)
+  const env = track.map.env;
   {
     const padMats = [];
-    for (const t of track.trees) {
+    for (const t of env.pads === false ? [] : track.trees) {
       const near = track.nearest(t.x, t.z, null, 0, 2);
       if (near.dist > 7.5 || !near.inside) continue;
       padMats.push(m4.compose(p.set(t.x, t.y + 0.15, t.z), q.identity(), sc.set(t.r + 0.12, 1, t.r + 0.12)).clone());
@@ -939,7 +954,7 @@ transformed.y += max(0.0, sin(uTime * 7.0 + ph)) * 0.05 * step(0.5, fract(ph));
     }).tex;
     const signMat = new THREE.MeshStandardMaterial({ map: chev, roughness: 0.6 });
     let last = -100;
-    for (let s = 30; s < track.length - 40; s += 2) {
+    for (let s = 30; env.chevrons !== false && s < track.length - 40; s += 2) {
       const k = track.sample(s + 12).k;
       if (Math.abs(k) < 0.045 || s - last < 40) continue;
       last = s;

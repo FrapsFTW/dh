@@ -14,7 +14,7 @@ import { rng, fbm, smoothstep } from '../sim/noise.js';
 
 const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
 
-// Les variantes : un modèle EZ-Tree, une graine, et de quoi l'alléger (sections et segments des branches, feuilles).
+// Les variantes de chaque essence : un modèle EZ-Tree, une graine, et ses retouches (opts : la forme de l'essence).
 const VARIANTS = {
   sapin: [
     { preset: 'Pine Medium', seed: 13977 },
@@ -28,25 +28,112 @@ const VARIANTS = {
     { preset: 'Ash Medium', seed: 5512 },
     { preset: 'Ash Medium', seed: 61 },
   ],
+  // La forêt de la côte Pacifique (Le Bike Park) : douglas et pruches, très hauts, sombres, au houppier étroit et
+  // pointu, branches basses retombantes.
+  douglas: [
+    { preset: 'Pine Large', seed: 31337, opts: (o) => { o.branch.length[1] *= 0.5; o.branch.children[0] = 130; o.branch.start[1] = 0.2; } },
+    { preset: 'Pine Large', seed: 8086, opts: (o) => { o.branch.length[1] *= 0.45; o.branch.children[0] = 120; o.branch.start[1] = 0.25; } },
+    { preset: 'Pine Medium', seed: 2718, opts: (o) => { o.branch.length[1] *= 0.55; o.branch.children[0] = 110; o.branch.start[1] = 0.18; } },
+  ],
+  // La Riviera (Le Single) : le pin maritime, un long fût nu et penché, le houppier tout en haut, étalé en parasol.
+  pin: [
+    { preset: 'Pine Medium', seed: 1607, opts: pinMaritime(0.62, 0.12) },
+    { preset: 'Pine Medium', seed: 4410, opts: pinMaritime(0.55, 0.18) },
+    { preset: 'Pine Medium', seed: 9021, opts: pinMaritime(0.68, 0.08) },
+  ],
+  // Le chêne vert : bas, trapu, un houppier rond et dense, de petites feuilles vert sombre.
+  chene: [
+    { preset: 'Oak Small', seed: 512, opts: chenevert(1) },
+    { preset: 'Oak Medium', seed: 77, opts: chenevert(0.8) },
+    { preset: 'Oak Small', seed: 3141, opts: chenevert(1.2) },
+  ],
+  // L'olivier des terrasses : un tronc court et tordu, des feuilles étroites, gris argenté.
+  olivier: [
+    { preset: 'Oak Small', seed: 4242, opts: olivier(0.35) },
+    { preset: 'Oak Small', seed: 1789, opts: olivier(0.5) },
+  ],
 };
+
+function pinMaritime(start, lean) {
+  return (o) => {
+    o.branch.levels = 2;
+    o.branch.start[1] = start; // le fût nu, jusqu'aux deux tiers
+    o.branch.children[0] = 30;
+    o.branch.angle[1] = 66; // les charpentières montent en s'écartant
+    o.branch.length[1] = 34;
+    o.branch.radius[1] = 0.45;
+    o.branch.gnarliness[0] = lean; // un fût qui ondule
+    o.branch.gnarliness[1] = 0.18;
+    o.branch.children[1] = 4;
+    o.branch.angle[2] = 48;
+    o.branch.length[2] = 9;
+    o.branch.start[2] = 0.35;
+    o.branch.force.strength = 0.012;
+    o.leaves.count = 18;
+    o.leaves.size = 2.7;
+    o.leaves.angle = 30;
+    o.leaves.start = 0.2;
+  };
+}
+
+function chenevert(spread) {
+  return (o) => {
+    o.branch.start[1] = 0.28;
+    o.branch.length[0] *= 0.75;
+    o.branch.length[1] *= spread;
+    o.branch.children[0] = 7;
+    o.leaves.count = 24;
+    o.leaves.size *= 0.85;
+    o.leaves.tint = 0xffffff;
+  };
+}
+
+function olivier(twist) {
+  return (o) => {
+    o.branch.length[0] = 16;
+    o.branch.gnarliness[0] = 0.32;
+    o.branch.twist[0] = twist;
+    o.branch.radius[0] = 1.5;
+    o.branch.start[1] = 0.32;
+    o.branch.children[0] = 5;
+    o.branch.angle[1] = 42;
+    o.branch.gnarliness[1] = 0.25;
+    o.leaves.type = 'ash'; // (des folioles étroites, comme les feuilles de l'olivier)
+    o.leaves.count = 26;
+    o.leaves.size *= 1.1;
+    o.leaves.tint = 0xffffff;
+  };
+}
+
+// L'allure de chaque essence : la teinte des feuilles et de l'écorce, combien de feuilles on garde (et de combien on les
+// agrandit), la hauteur par rapport à celle que donne la piste, le vent, et la hauteur des arbres du relief lointain.
+const LOOKS = {
+  sapin: { leaf: '#dbe6c8', keep: 0.85, grow: 1.3, height: 1, wind: 0.008, far: 13 },
+  feuillu: { leaf: '#e2ead0', keep: 0.6, grow: 1.22, height: 0.8, wind: 0.012, far: 10 },
+  douglas: { leaf: '#93ad88', bark: '#b3a497', keep: 0.85, grow: 1.3, height: 1, wind: 0.006, far: 28 },
+  pin: { leaf: '#d9e0b4', bark: '#c9a98e', keep: 0.75, grow: 1.25, height: 1, wind: 0.01, far: 14 },
+  chene: { leaf: '#9fac84', bark: '#a8a49c', keep: 0.7, grow: 1.15, height: 1, wind: 0.01, far: 8 },
+  olivier: { leaf: '#c3cdb4', bark: '#b5ad9f', keep: 0.7, grow: 1.1, height: 1, wind: 0.012, far: 6 },
+};
+const lookOf = (kind) => LOOKS[kind] || LOOKS.sapin;
 
 function generate(v, kind, low) {
   const tree = new Tree();
   tree.loadPreset(v.preset);
   const o = tree.options;
   o.seed = v.seed;
+  if (v.opts) v.opts(o);
   // Moins de facettes sur les branches : on ne les voit jamais de près, et il y a des centaines d'arbres.
   for (let l = 1; l <= 3; l++) {
     o.branch.sections[l] = Math.max(3, Math.round(o.branch.sections[l] * 0.5));
     o.branch.segments[l] = Math.max(3, Math.round(o.branch.segments[l] * 0.66));
   }
   o.branch.segments[0] = Math.min(o.branch.segments[0], 8);
-  // Moins de feuilles, un peu plus grandes : le même volume pour moitié moins de triangles.
-  // Moins de feuilles, plus grandes : presque le même volume pour moins de triangles. Les sapins en gardent plus :
+  // Moins de feuilles, plus grandes : presque le même volume pour moins de triangles. Les conifères en gardent plus :
   // c'est leur masse d'aiguilles qui les rend vivants (sinon on ne voit que des branches nues).
-  const keep = kind === 'sapin' ? 0.85 : 0.6;
-  o.leaves.count = Math.max(4, Math.round(o.leaves.count * keep * (low ? 0.7 : 1)));
-  o.leaves.size *= kind === 'sapin' ? 1.3 : 1.22;
+  const L = lookOf(kind);
+  o.leaves.count = Math.max(4, Math.round(o.leaves.count * L.keep * (low ? 0.7 : 1)));
+  o.leaves.size *= L.grow;
   tree.generate();
   return tree;
 }
@@ -179,42 +266,48 @@ function impostorGeometry(halfWidth) {
   return g;
 }
 
+/** Une variante prête à dessiner : géométries ramenées à une hauteur de 1, matériaux de l'écorce et des feuilles. */
+export function buildVariant(v, kind, low, uniforms) {
+  const tree = generate(v, kind, low);
+  const L = lookOf(kind);
+  const barkGeo = tree.branchesMesh.geometry, leafGeo = tree.leavesMesh.geometry;
+  const size = normalize([barkGeo, leafGeo]);
+  foliageNormals(leafGeo);
+  const src = tree.branchesMesh.material, srcLeaf = tree.leavesMesh.material;
+  const barkMat = new THREE.MeshStandardMaterial({
+    map: src.map, normalMap: src.normalMap, aoMap: src.aoMap, roughnessMap: src.roughnessMap, roughness: 1, color: lin(L.bark || '#cfc4b6'),
+  });
+  addWind(barkMat, uniforms, 0.006);
+  const leafMat = new THREE.MeshStandardMaterial({ map: srcLeaf.map, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.85, color: lin(L.leaf) });
+  addWind(leafMat, uniforms, L.wind);
+  const midLeafGeo = thinLeaves(leafGeo, 3);
+  return { kind, barkGeo, leafGeo, midLeafGeo, barkMat, leafMat, size, tris: (barkGeo.index.count + leafGeo.index.count) / 3, midTris: (barkGeo.index.count + midLeafGeo.index.count) / 3 };
+}
+
+/** Pour les essais : les variantes d'une essence. */
+export const treeVariants = (kind) => VARIANTS[kind];
+
 export function createForest(track, renderer, { low = false } = {}) {
   const group = new THREE.Group();
   group.name = 'foret';
   const uniforms = { uTime: { value: 0 } };
-  const NEAR = low ? 22 : 35; // jusqu'où on dessine le vrai modèle
-  const MID = low ? 45 : 70; // puis son feuillage allégé, jusqu'ici (au-delà, l'imposteur)
+  // (une piste bordée d'arbres serrés, en épingles, en a beaucoup à portée : elle peut rapprocher ces distances,
+  // env.treeDetail)
+  const detail = track.map.env.treeDetail || {};
+  const NEAR = low ? 22 : detail.near ?? 35; // jusqu'où on dessine le vrai modèle
+  const MID = low ? 45 : detail.mid ?? 70; // puis son feuillage allégé, jusqu'ici (au-delà, l'imposteur)
   const rand = rng(track.seed + 77);
 
-  // ----- Les variantes -----
+  // ----- Les variantes (des seules essences de la piste) -----
   const kinds = {};
-  for (const [kind, list] of Object.entries(VARIANTS)) {
-    kinds[kind] = list.map((v) => {
-      const tree = generate(v, kind, low);
-      const barkGeo = tree.branchesMesh.geometry, leafGeo = tree.leavesMesh.geometry;
-      const size = normalize([barkGeo, leafGeo]);
-      foliageNormals(leafGeo);
-      const src = tree.branchesMesh.material, srcLeaf = tree.leavesMesh.material;
-      const barkMat = new THREE.MeshStandardMaterial({
-        map: src.map, normalMap: src.normalMap, aoMap: src.aoMap, roughnessMap: src.roughnessMap, roughness: 1, color: lin('#cfc4b6'),
-      });
-      addWind(barkMat, uniforms, 0.006);
-      const leafMat = new THREE.MeshStandardMaterial({
-        map: srcLeaf.map, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.85,
-        color: kind === 'sapin' ? lin('#dbe6c8') : lin('#e2ead0'),
-      });
-      addWind(leafMat, uniforms, kind === 'sapin' ? 0.008 : 0.012);
-      const midLeafGeo = thinLeaves(leafGeo, 3);
-      return { kind, barkGeo, leafGeo, midLeafGeo, barkMat, leafMat, size, tris: (barkGeo.index.count + leafGeo.index.count) / 3, midTris: (barkGeo.index.count + midLeafGeo.index.count) / 3 };
-    });
-  }
+  const used = new Set(track.trees.map((t) => (VARIANTS[t.kind] ? t.kind : 'sapin')));
+  for (const kind of used) kinds[kind] = VARIANTS[kind].map((v) => buildVariant(v, kind, low, uniforms));
 
   // ----- Chaque arbre de la piste : sa variante, sa taille, son orientation, sa teinte -----
   const trees = track.trees.map((t) => {
     const list = kinds[t.kind] || kinds.sapin;
     const variant = list[Math.floor(t.hue * 997) % list.length];
-    const h = t.kind === 'sapin' ? t.h : t.h * 0.8;
+    const h = t.h * lookOf(t.kind).height;
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2)
       .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), (rand() - 0.5) * 0.05));
     const m = new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y - 0.1, t.z), q, new THREE.Vector3(h, h, h));
@@ -236,10 +329,11 @@ export function createForest(track, renderer, { low = false } = {}) {
       // (pas là où il y a déjà la vraie forêt : le rectangle de la piste, ou sa bande)
       if (track.band !== null ? track.trailDist(x, z) < track.band + 4 : x > B.xmin - 4 && x < B.xmax + 4 && z > B.zmin - 4 && z < B.zmax + 4) continue;
       const y = track.natural(x, z) - 1.2;
+      if (env.sea && y < env.sea.level + 4) continue; // (pas dans la mer)
       const dens = (1 - smoothstep(tl - 30, tl + 5, y)) * smoothstep(0.3, 0.6, fbm(x / 160, z / 160, 3, 5) * 0.5 + 0.75);
       if (rand() > dens * 0.8) continue;
       const variant = all[Math.floor(rand() * all.length)];
-      const h = (variant.kind === 'sapin' ? 13 : 10) * (0.7 + rand() * 0.6) * (1 - 0.4 * smoothstep(tl - 40, tl, y));
+      const h = lookOf(variant.kind).far * (0.7 + rand() * 0.6) * (1 - 0.4 * smoothstep(tl - 40, tl, y));
       const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y - 0.3, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * 6.3), new THREE.Vector3(h, h, h));
       if (!farTrees.has(variant)) farTrees.set(variant, []);
       farTrees.get(variant).push(m);
@@ -296,17 +390,23 @@ export function createForest(track, renderer, { low = false } = {}) {
   }
 
   const tmpColor = new THREE.Color();
-  const fwd = new THREE.Vector3();
+  const fwd = new THREE.Vector3(), last = { x: Infinity, z: 0, fx: 0, fz: 0 };
   let detailed = 0, mid = 0;
   return {
     group,
     get stats() { return { variants: slots.length, detailed, mid, trianglesPerTree: Object.values(kinds).flat().map((k) => Math.round(k.tris)), midTriangles: Object.values(kinds).flat().map((k) => Math.round(k.midTris)) }; },
-    /** À chaque image : qui est dessiné en détail, qui en imposteur. */
+    /**
+     * Qui est dessiné en détail, qui en imposteur. Les listes ne sont refaites que si la caméra a bougé d'un mètre ou
+     * tourné (à 50 km/h, une image sur quatre) : sur une piste de 10 000 arbres, c'est ce qui coûte le plus.
+     */
     update(camera, t) {
       uniforms.uTime.value = t;
       camera.getWorldDirection(fwd);
       const cx = camera.position.x, cz = camera.position.z;
       const fx = fwd.x, fz = fwd.z, fl = Math.hypot(fx, fz) || 1;
+      const turned = (fx * last.fx + fz * last.fz) / fl < 0.997;
+      if (Math.hypot(cx - last.x, cz - last.z) < 1 && !turned && slots.every((s) => s.ready)) return;
+      Object.assign(last, { x: cx, z: cz, fx: fx / fl, fz: fz / fl });
       detailed = 0; mid = 0;
       for (const s of slots) {
         if (!s.ready) s.tryCapture();

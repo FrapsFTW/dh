@@ -876,7 +876,7 @@ if (!film) requestAnimationFrame(frame);
 
 // Pour les captures automatiques (tools/shots.mjs).
 window.__game = {
-  sim, rig,
+  sim, rig, world,
   setAutopilot(v) { auto = v; if (phase === 'hut') phase = 'ride'; },
   setMode,
   peloton,

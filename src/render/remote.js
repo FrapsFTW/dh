@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { createBikeModel } from './bikeModel.js';
 import { tagSprite } from './peloton.js';
+import { WHIP } from './rider.js';
 import { POSE, POSE_SIZE, FLAG } from '../sim/peloton.js';
 import { KITS } from '../net/online.js';
 
@@ -23,7 +24,7 @@ const qRoll = new THREE.Quaternion();
 export function whipStyle(st, out) {
   const w = st.whip || 0;
   if (Math.abs(w) < 0.01) return null;
-  out.q.setFromAxisAngle(Y, -0.5 * w).multiply(qRoll.setFromAxisAngle(Z, -0.95 * w));
+  out.q.setFromAxisAngle(Y, -WHIP.yaw * w).multiply(qRoll.setFromAxisAngle(Z, -WHIP.roll * w));
   out.pivot.copy(st.hips);
   return out;
 }

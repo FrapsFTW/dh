@@ -427,6 +427,30 @@ test("Le Bike Park : de gros sauts (plus d'une demi-seconde en l'air à leur vit
   for (const f of jumps) if (f !== big) assert.ok(airtime(big) > airtime(f), `${f.name} vole plus longtemps que le Big One`);
 });
 
+test('Le Bike Park : des sauts de toutes les formes, comme dans un vrai bike park', () => {
+  const t = tracks.bikepark, y = (s) => t.trailY(s, 0);
+  const at = (s) => { const f = t.sample(s); return t.surfaceAt(f.x, f.z).name; };
+  const jumps = t.features.filter((f) => f.type === 'jump');
+  // Des tables, des gaps, des drops ; en terre, en bois, creusés.
+  for (const kind of ['table', 'gap', 'drop']) assert.ok(jumps.some((f) => f.kind === kind), kind);
+  const wood = jumps.filter((f) => f.look === 'bois');
+  assert.ok(wood.length >= 3, `${wood.length} modules en bois`);
+  for (const f of wood) assert.equal(at((f.a + f.lipS) / 2), 'bois', `${f.name} : la lèvre est en planches`);
+  assert.ok(jumps.filter((f) => f.look === 'trou').length >= 3, 'des doubles creusés');
+  // Le step-up : on se pose plus haut qu'on n'a décollé.
+  const up = jumps.find((f) => f.name === 'step-up');
+  assert.ok(y(up.lipS + up.knuckle + 1) > y(up.lipS) + 0.5, 'le step-up');
+});
+
+test('Le Single : une dalle calcaire et des marches de pierre', () => {
+  const t = tracks.single, y = (s) => t.trailY(s, 0);
+  const at = (s) => { const f = t.sample(s); return t.surfaceAt(f.x, f.z).name; };
+  const slab = t.features.find((f) => f.type === 'slab'), stairs = t.features.find((f) => f.type === 'stairs');
+  assert.equal(at((slab.a + slab.b) / 2), 'roche');
+  // Chaque marche : un palier, puis un ressaut de plus de 15 cm.
+  for (let s = stairs.a + stairs.step; s < stairs.b; s += stairs.step) assert.ok(y(s - 0.1) - y(s + 0.1) > 0.15, `marche à ${s.toFixed(0)} m`);
+});
+
 test('Le Single : balisé à moins de 2,5 m de large sur presque toute la descente, en épingles serrées', () => {
   const t = tracks.single;
   let narrow = 0, n = 0;

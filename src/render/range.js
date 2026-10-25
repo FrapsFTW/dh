@@ -39,7 +39,7 @@ export function createRange(track, massif, { sunDir, low = false } = {}) {
   const env = track.map.env, R = env.range || {};
   const c = track.sample(track.length / 2);
   const r0 = env.far.radius - (env.far.step || 14), r1 = RANGE_RADIUS;
-  const height = R.height ?? 2400, ramp = R.ramp ?? 2500;
+  const height = R.height ?? 2400, ramp = R.ramp ?? 2500, sea = env.sea;
   const base = track.trailY(track.length, 0) - 120, top = track.trailY(0, 0) + (R.top ?? 150);
   const { N, h: M } = massif;
   const cell = CELL * (R.scale ?? 1), half = (N * cell) / 2;
@@ -60,7 +60,13 @@ export function createRange(track, massif, { sunDir, low = false } = {}) {
     // (le relief de la carte, vite ramené sur le socle : il monterait sans fin)
     const natC = nat + (floor - nat) * smoothstep(r0, r0 + ramp * 0.35, r);
     const rim = 0.35 * smoothstep(r1 * 0.72, r1, r); // une couronne de sommets ferme l'horizon
-    const y = natC - 3 + w * (floor + height * (massifAt(x, z) + rim) - natC + 3);
+    let y = natC - 3 + w * (floor + height * (massifAt(x, z) + rim) - natC + 3);
+    // Face à la mer (env.sea), pas de massif : le relief plonge sous l'eau (les bords du secteur font des caps).
+    if (sea) {
+      const toward = ((x - c.x) * sea.dir[0] + (z - c.z) * sea.dir[1]) / Math.max(r, 1);
+      const m = smoothstep(Math.cos(sea.open + 0.2), Math.cos(sea.open - 0.2), toward) * smoothstep(r0 * 0.4, r0, r);
+      y += (Math.min(y, sea.level - 30) - y) * m;
+    }
     return y - (r * r) / (2 * 6371000); // la rondeur de la Terre
   };
 

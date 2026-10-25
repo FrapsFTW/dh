@@ -12,9 +12,14 @@ import { createGround } from './ground.js';
 import { createVegetation } from './vegetation.js';
 import { createForest } from './trees.js';
 import { createCourse } from './course.js';
+import { setGroundLooks } from './groundLayers.js';
+import { NOISE_GLSL } from './glsl.js';
 
-// Un soleil de fin d'après-midi, assez bas pour des ombres longues sous les sapins.
-const SUN_DIR = new THREE.Vector3(-0.55, 0.52, 0.4).normalize();
+const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
+
+// Un soleil de fin d'après-midi, assez bas pour des ombres longues sous les sapins (une carte peut en choisir un autre :
+// env.sun).
+const DEFAULT_SUN = new THREE.Vector3(-0.55, 0.52, 0.4).normalize();
 const SUN_COLOR = new THREE.Color('#fff0d8').convertSRGBToLinear();
 
 /** La lumière d'ambiance : le ciel vu depuis la piste, au-dessus d'un sol sombre. */
@@ -34,6 +39,8 @@ function skyEnvironment(renderer, atm, clouds) {
 export function createScene(sim, { low = false, renderer, groundTextures, massif } = {}) {
   const { track } = sim;
   const env = track.map.env;
+  const SUN_DIR = env.sun ? new THREE.Vector3(...env.sun).normalize() : DEFAULT_SUN;
+  setGroundLooks(env.ground); // (les teintes des sols de la carte, avant de construire les matériaux)
   const atm = atmosphereParams(env, track.trailY(track.length, 0) - 60, SUN_DIR);
   setupAtmosphere(atm);
   const clouds = env.clouds ?? 0.45;
@@ -76,6 +83,23 @@ export function createScene(sim, { low = false, renderer, groundTextures, massif
   const course = createCourse(sim, SUN_DIR, { groundTextures });
   scene.add(course.group);
 
+  // ----- La mer (env.sea) : une nappe dans chaque scène, au même niveau (la proche cache le relief sous l'eau, la
+  // lointaine les massifs) -----
+  let sea = null;
+  if (env.sea) {
+    sea = seaMaterial();
+    const c = track.sample(track.length / 2);
+    const viewDistance = env.far ? env.far.radius * 1.5 + 2500 : 4000;
+    for (const [sc, r] of [[scene, viewDistance], [farScene, 60000]]) {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(r, 96), sea);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(c.x, env.sea.level, c.z);
+      m.receiveShadow = sc === scene;
+      m.name = 'mer';
+      sc.add(m);
+    }
+  }
+
   const tmp = new THREE.Vector3();
   return {
     scene,
@@ -97,6 +121,31 @@ export function createScene(sim, { low = false, renderer, groundTextures, massif
       vegetation.update(t, camera);
       forest.update(camera, t);
       course.update(t, camera);
+      if (sea) sea.userData.time.value = t;
     },
   };
+}
+
+/** La mer : bleu profond, le ciel s'y reflète ; des vagues (la normale ondule), qui s'effacent au loin. */
+function seaMaterial() {
+  const mat = new THREE.MeshStandardMaterial({ color: lin('#0f3a55'), roughness: 0.2, metalness: 0 });
+  mat.userData.time = { value: 0 };
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = mat.userData.time;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSeaW;')
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvSeaW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec3 vSeaW;\nuniform float uTime;\n${NOISE_GLSL}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  vec2 p = vSeaW.xz;
+  float fade = 1.0 - smoothstep(400.0, 6000.0, length(vSeaW - cameraPosition));
+  vec2 g = vec2(dh_noise(p * 0.045 + vec2(uTime * 0.05, 0.0)) - dh_noise(p * 0.045 + vec2(3.1, uTime * 0.04)),
+    dh_noise(p * 0.13 + vec2(1.7, -uTime * 0.07)) - dh_noise(p * 0.13 + vec2(-uTime * 0.06, 5.3))) * 0.3 * fade;
+  normal = normalize(normal + mat3(viewMatrix) * vec3(g.x, 0.0, g.y));
+}`);
+  };
+  mat.customProgramCacheKey = () => 'mer';
+  return mat;
 }

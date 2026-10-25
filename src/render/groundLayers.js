@@ -20,6 +20,11 @@ export const GROUND_LAYERS = [
 
 export const LAYER = Object.fromEntries(GROUND_LAYERS.map((l, i) => [l.name, i]));
 
+// Les teintes voulues propres à la carte (env.ground : { nom de la couche : [r, g, b] }) : la terre rouge et le calcaire
+// de la Riviera, par exemple. Posées avant de construire la scène (une page ne montre qu'une carte).
+let LOOKS = {};
+export function setGroundLooks(looks) { LOOKS = looks || {}; }
+
 /**
  * Le GLSL des couches : la taille, la rugosité, et les deux facteurs de couleur (en linéaire : l'échelle de luminosité,
  * et la teinte voulue, de luminosité 1).
@@ -32,7 +37,7 @@ export function layerGLSL() {
   const N = GROUND_LAYERS.length;
   const size = [], rough = [], scale = [], tint = [], recolor = [];
   for (const l of GROUND_LAYERS) {
-    const a = l.avg.map(lin), t = l.look.map(lin);
+    const a = l.avg.map(lin), t = (LOOKS[l.name] || l.look).map(lin);
     size.push(f(l.size)); rough.push(f(l.rough)); recolor.push(f(l.recolor));
     scale.push(f(lum(t) / lum(a)));
     tint.push(v3(t.map((x) => x / lum(t))));

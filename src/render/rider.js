@@ -7,7 +7,8 @@
 // - en virage, il reste plus droit que le vélo, la tête regarde où il va et garde l'horizon ;
 // - en roue libre, pédales à plat, et pied extérieur en bas dans les virages ; en pédalant, le buste se balance ;
 // - arrêté (sur la grille, après l'arrivée), il pose le pied gauche par terre ;
-// - en l'air, les rivaux peuvent coucher le vélo (whip, table) : le vélo tourne autour des hanches, mains et pieds suivent.
+// - en l'air, le joueur et les rivaux peuvent coucher le vélo (whip, table) : le vélo tourne autour des hanches, mains
+//   et pieds suivent, le haut du corps à moitié.
 // Le joueur a en plus les bras détaillés de arms.js (mains refermées sur les poignées) ; ceux d'ici servent le temps
 // qu'ils chargent, et aux rivaux.
 // Repère : celui du vélo (voir src/sim/geometry.js).
@@ -22,6 +23,12 @@ const NEUTRAL_HIPS = new THREE.Vector3(0, GEOMETRY.bottomBracket.y + 0.72, GEOME
 // Les yeux en vue subjective, pilote au neutre : au-dessus et en retrait du cintre, comme une caméra sur le casque.
 const EYE = new THREE.Vector3(0, 1.575, 0.23);
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+/**
+ * Le whip à fond (st.whip = ±1) : le vélo tourné autour des hanches, en lacet puis couché (rad) ; body : la part de
+ * cette rotation que suit le haut du corps (et, en vue subjective, la tête et la caméra).
+ */
+export const WHIP = { yaw: 0.5, roll: 0.95, body: 0.5 };
 
 export const RIDER = {
   thigh: 0.45, shin: 0.46, upperArm: 0.31, forearm: 0.3, spine: 0.52, neck: 0.12,
@@ -250,7 +257,7 @@ export function createRider({ detailedArms = false, kit = PLAYER_KIT, number = n
     if (len) m.scale.y = Math.max(0.6, d / len);
   };
   const RIGHT = new THREE.Vector3(1, 0, 0), FWD = new THREE.Vector3(0, 0, -1);
-  const tq = new THREE.Quaternion();
+  const tq = new THREE.Quaternion(), qBody = new THREE.Quaternion(), sideBody = new THREE.Vector3(), eye0 = new THREE.Vector3();
 
   const api = {
     group,
@@ -272,6 +279,10 @@ export function createRider({ detailedArms = false, kit = PLAYER_KIT, number = n
       const speed = st.speed != null ? st.speed : 0;
       const pedaling = st.input && st.input.pedal > 0 && !st.crashed;
       const xf = (P) => (style ? P.sub(style.pivot).applyQuaternion(style.q).add(style.pivot) : P);
+      // Couché en whip, le haut du corps suit à moitié le vélo (il se penche et se tourne avec lui) : sinon la poignée
+      // du bas part hors de portée des bras. En vue subjective, la tête aussi (la caméra : voir cameraRig.js).
+      if (style) qBody.identity().slerp(style.q, WHIP.body);
+      const xfBody = (P) => (style ? P.sub(style.pivot).applyQuaternion(qBody).add(style.pivot) : P);
       qInv.copy(q).invert();
       worldUp.copy(UP).applyQuaternion(qInv);
 
@@ -312,7 +323,8 @@ export function createRider({ detailedArms = false, kit = PLAYER_KIT, number = n
       shoulders.x += worldUp.x * RIDER.spine * 0.45 + (pedaling ? Math.sin(crank) * 0.04 : 0);
       tmp.subVectors(shoulders, hips).normalize();
       shoulders.copy(hips).addScaledVector(tmp, RIDER.spine);
-      orient(torso, hips, shoulders, RIGHT);
+      xfBody(shoulders);
+      orient(torso, hips, shoulders, style ? sideBody.copy(RIGHT).applyQuaternion(qBody) : RIGHT);
       torso.scale.set(1.18, 1, 0.78);
       const bX = tX.clone(), bY = tY.clone(), bZ = tZ.clone(); // le repère du buste
       if (backNum) { backNum.position.copy(hips).addScaledVector(bY, 0.33).addScaledVector(bZ, 0.118 + (pack ? 0.06 : 0)); backNum.quaternion.copy(torso.quaternion); if (pack) backNum.position.addScaledVector(bY, -0.17); }
@@ -330,7 +342,8 @@ export function createRider({ detailedArms = false, kit = PLAYER_KIT, number = n
       head.quaternion.setFromRotationMatrix(basis.makeBasis(tX, tY, tZ));
       // La caméra subjective : en retrait du cintre, comme une caméra embarquée (on voit le cintre et les gants),
       // et elle suit les déplacements du poids du pilote (ceux de la physique, sans le ressort : la caméra a le sien).
-      this.eye.set(0, EYE.y + (st.hips.y - NEUTRAL_HIPS.y) * 0.8, EYE.z + (st.hips.z - NEUTRAL_HIPS.z) * 0.9);
+      eye0.set(0, EYE.y + (st.hips.y - NEUTRAL_HIPS.y) * 0.8, EYE.z + (st.hips.z - NEUTRAL_HIPS.z) * 0.9);
+      xfBody(this.eye.copy(eye0));
 
       // Le guidon tourne autour de l'axe de direction : les poignées aussi.
       qTmp.setFromAxisAngle(steerAxis, -(st.steer || 0));
@@ -344,11 +357,13 @@ export function createRider({ detailedArms = false, kit = PLAYER_KIT, number = n
       side.forEach((s, i) => {
         const P = parts[i];
         // Les bras. En vue subjective, les épaules sont sous la caméra : les bras partent des coins bas de l'image.
-        if (firstPerson) shoulder.copy(this.eye).add(tmp2.set(s * 0.21, -0.3, 0.06));
+        if (firstPerson) xfBody(shoulder.copy(eye0).add(tmp2.set(s * 0.21, -0.3, 0.06)));
         else shoulder.copy(shoulders).addScaledVector(bX, s * RIDER.shoulderHalf).addScaledVector(bY, -0.04);
         hand.copy(grips[i]).sub(pivot).applyQuaternion(qTmp).add(pivot);
         xf(hand);
-        solveTwoBone(shoulder, hand, RIDER.upperArm, RIDER.forearm, tmp2.set(s * 0.55, -0.5, 0.45), elbow);
+        tmp2.set(s * 0.55, -0.5, 0.45);
+        if (style) tmp2.applyQuaternion(qBody);
+        solveTwoBone(shoulder, hand, RIDER.upperArm, RIDER.forearm, tmp2, elbow);
         tmp.set(s, 0, 0);
         orient(P.upperArm, shoulder, elbow, tmp, RIDER.upperArm);
         orient(P.forearm, elbow, hand, tmp, RIDER.forearm);
@@ -383,9 +398,9 @@ export function createRider({ detailedArms = false, kit = PLAYER_KIT, number = n
       for (const P of parts) P.shoulderBall.visible = body;
       if (arms && arms.loaded) {
         // Les épaules : sous la caméra en vue subjective (les bras partent des coins bas de l'image), sinon sur le buste.
-        if (firstPerson) shoulderMid.copy(this.eye).add(tmp.set(0, -0.3, 0.06));
+        if (firstPerson) xfBody(shoulderMid.copy(eye0).add(tmp.set(0, -0.3, 0.06)));
         else shoulderMid.copy(shoulders).addScaledVector(bY, -0.04);
-        arms.update(shoulderMid, qTmp);
+        arms.update(shoulderMid, qTmp, style, style ? qBody : null);
         for (const P of parts) P.upperArm.visible = P.forearm.visible = P.hand.visible = P.elbowBall.visible = P.shoulderBall.visible = false;
       }
     },
