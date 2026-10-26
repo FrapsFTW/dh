@@ -23,6 +23,7 @@ import { createSpeedParticles } from './render/speedFx.js';
 import { loadPeloton, createPeloton } from './render/peloton.js';
 import { PLAYER, gridSlots, poseOf } from './sim/peloton.js';
 import { joinSalon, serverUrl, newCode, validCode, playerId, KITS } from './net/online.js';
+import { fetchBoard, sendTime, pilotId } from './net/classement.js';
 import { createRemoteRiders, DELAY, whipStyle } from './render/remote.js';
 
 const params = new URLSearchParams(location.search);
@@ -224,7 +225,8 @@ let best = loadBest(mode);
 let ghostOn = !!(best && best.trace);
 let message = null, messageUntil = 0;
 let lastSplits = 0, finishShownAt = 0, shownCrash = null, recordThisRun = false;
-const menu = createMenu();
+let assisted = auto; // le pilote automatique a-t-il roulé pendant cette manche (elle ne compte pas au classement)
+const menu = createMenu({ onTab: (t) => { if (t === 'classement') showBoard(); } });
 if (!params.has('nohelp') && !auto) menu.show('pistes');
 $('loading').remove();
 if (!params.has('nohud')) $('hud').classList.remove('hidden'); // ?nohud : l'image seule (captures)
@@ -380,7 +382,7 @@ function restart(online = null) {
   rig.reset();
   phase = online ? 'countdown' : auto ? (pelotonOn ? 'countdown' : 'ride') : 'hut';
   if (phase === 'countdown') { countdown = online ? (online.at - net.now()) / 1000 : 3.999; lastBeep = online ? 99 : 4; }
-  lastSplits = 0; finishShownAt = 0; recordThisRun = false;
+  lastSplits = 0; finishShownAt = 0; recordThisRun = false; assisted = auto;
   message = null;
   myHist.length = 0;
   $('results').classList.add('hidden');
@@ -570,7 +572,7 @@ function onFinish() {
       lastK = k;
     }
     classement += '</div>';
-  }
+  } else classement = rankedBlock(race.time);
   $('resRows').innerHTML = classement + rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
   finishShownAt = performance.now() + 1800;
   updateOnlineUI();
@@ -746,11 +748,14 @@ function updateOnlineUI() {
 
 // Le formulaire du salon.
 $('olName').value = myName;
-$('olName').addEventListener('change', () => {
-  myName = $('olName').value.trim().slice(0, 20);
+/** Son nom, pour le salon comme pour le classement. */
+function setName(n) {
+  myName = String(n).trim().slice(0, 20);
   store(NAME_KEY, myName);
+  $('olName').value = myName; $('lbName').value = myName;
   if (net) net.setProfile(myName || 'Pilote', myColor);
-});
+}
+$('olName').addEventListener('change', () => setName($('olName').value));
 for (const [i, k] of KITS.entries()) {
   const b = document.createElement('b');
   b.style.background = k.jersey;
@@ -764,6 +769,69 @@ for (const [i, k] of KITS.entries()) {
   b.classList.toggle('on', i === myColor);
   $('olColors').appendChild(b);
 }
+
+// ----- Le classement mondial (src/net/classement.js) -----
+// Le meilleur temps de chaque pilote en contre la montre, par piste et par mode, gardé par le serveur des salons. Une
+// manche compte si elle a été faite sans pilote automatique, avec les réglages du mode, sur la vraie piste (pas de ?seed).
+const LB_SERVER = serverUrl(params);
+const PILOT = pilotId();
+let lbMap = mapId, lbMode = mode, lbSeq = 0;
+const lbName = () => myName || (PILOT ? `Pilote ${PILOT.slice(-4).toUpperCase()}` : 'Pilote');
+const ordinal = (n) => `${n}${n === 1 ? 'er' : 'e'}`;
+const tunedParams = () => { const ref = modeParams(mode); return Object.keys(ref).some((k) => typeof ref[k] !== 'object' && P[k] !== ref[k]); };
+function lbRow(r, lead) {
+  return `<div class="crow${r.me ? ' me' : ''}"><span class="p tab${r.rank <= 3 ? ` r${r.rank}` : ''}">${r.rank}</span><i style="background:${(KITS[r.color] || KITS[0]).jersey}">&nbsp;</i><span class="nm">${esc(r.name)}${r.me ? ' (toi)' : ''}</span><b class="tab">${fmt(r.time)}</b><span class="d tab">${r.rank > 1 ? `+${(r.time - lead).toFixed(2)}` : ''}</span></div>`;
+}
+/** Les lignes d'un classement : les n premiers, puis sa place et ses voisins s'il est plus loin. */
+function lbRows(v, n) {
+  if (!v.total) return '<div class="lbInfo">Personne encore : le premier temps sera le tien.</div>';
+  const lead = v.top[0].time, shown = v.top.slice(0, n);
+  let html = shown.map((r) => lbRow(r, lead)).join('');
+  const rest = v.around.filter((r) => r.rank > shown.length);
+  if (rest.length) html += (rest[0].rank > shown.length + 1 ? '<div class="dots">⋯</div>' : '') + rest.map((r) => lbRow(r, lead)).join('');
+  return html;
+}
+/** La rubrique Classement du menu : la piste et le mode choisis (au départ, ceux de la manche). */
+async function showBoard() {
+  for (const b of document.querySelectorAll('[data-lbmap]')) b.classList.toggle('on', b.dataset.lbmap === lbMap);
+  for (const b of document.querySelectorAll('[data-lbmode]')) b.classList.toggle('on', b.dataset.lbmode === lbMode);
+  $('lbName').value = myName;
+  $('lbName').placeholder = lbName();
+  const seq = ++lbSeq, m = lbMap, md = lbMode, el = $('lbList');
+  const head = `<div class="lbHead">${esc(MAPS[m].name.toUpperCase())} · ${MODES[md].name.toUpperCase()}</div>`;
+  el.innerHTML = head + '<div class="lbInfo">Chargement…</div>';
+  let v;
+  try {
+    v = await fetchBoard(LB_SERVER, m, md, PILOT);
+    // Les records déjà faits sur ce navigateur y entrent, et son nom (ou sa couleur) s'y met à jour.
+    const local = recordOf(m, md);
+    const t = Math.min(local ? local.time : Infinity, v.me ? v.me.time : Infinity);
+    if (PILOT && Number.isFinite(t) && (!v.me || t < v.me.time || v.me.name !== lbName() || v.me.color !== myColor)) {
+      v = await sendTime(LB_SERVER, m, md, { id: PILOT, name: lbName(), color: myColor, time: t }).catch(() => v);
+    }
+  } catch {
+    if (seq === lbSeq) el.innerHTML = head + '<div class="lbInfo">Classement indisponible : pas de connexion au serveur.</div>';
+    return;
+  }
+  if (seq !== lbSeq) return;
+  const who = `${v.total} pilote${v.total > 1 ? 's' : ''}`;
+  el.innerHTML = `<div class="lbHead">${esc(MAPS[m].name.toUpperCase())} · ${MODES[md].name.toUpperCase()} · ${who}${v.me ? ` · TU ES ${ordinal(v.me.rank).toUpperCase()}` : ''}</div>` + lbRows(v, 50);
+}
+for (const b of document.querySelectorAll('[data-lbmap]')) b.addEventListener('click', () => { lbMap = b.dataset.lbmap; showBoard(); });
+for (const b of document.querySelectorAll('[data-lbmode]')) b.addEventListener('click', () => { lbMode = b.dataset.lbmode; showBoard(); });
+$('lbName').addEventListener('change', () => { setName($('lbName').value); showBoard(); });
+/** Sur l'écran d'arrivée, en contre la montre : le temps part au classement, qui s'affiche à la réponse. */
+function rankedBlock(time) {
+  if (film) return ''; // (les captures et les tests ne vont pas au classement)
+  const why = assisted ? 'pilote automatique' : tunedParams() ? 'réglages avancés retouchés' : params.has('seed') ? 'piste modifiée (?seed)' : !PILOT ? 'stockage du navigateur indisponible' : null;
+  if (why) return `<div class="classement"><div class="lbInfo">Hors classement mondial : ${why}.</div></div>`;
+  const show = (html) => { const el = $('resBoard'); if (el) el.innerHTML = html; };
+  sendTime(LB_SERVER, mapId, mode, { id: PILOT, name: lbName(), color: myColor, time })
+    .then((v) => show(`<div class="lbHead">CLASSEMENT MONDIAL${v.me ? ` · ${ordinal(v.me.rank).toUpperCase()} SUR ${v.total}` : ''}${v.improved ? ' · NOUVEAU MEILLEUR TEMPS' : ''}</div>` + lbRows(v, 3)))
+    .catch(() => show('<div class="lbInfo">Classement mondial indisponible : pas de connexion au serveur.</div>'));
+  return '<div id="resBoard" class="classement"><div class="lbInfo">Classement mondial…</div></div>';
+}
+
 $('olCreate').addEventListener('click', () => goOnline(newCode()));
 $('olJoin').addEventListener('click', () => {
   const c = $('olCode').value.trim().toUpperCase();
@@ -831,6 +899,11 @@ function frame(now) {
   if (actions.ghost) { ghostOn = !ghostOn; showMessage('', ghostOn ? (best && best.trace ? 'Fantôme du record affiché' : 'Pas encore de record à rejouer') : 'Fantôme masqué', 1.5, true); if (phase === 'finished') restart(); }
   if (actions.autopilot) { auto = !auto; if (phase === 'hut') phase = 'ride'; showMessage('', auto ? 'Pilote automatique' : 'À toi', 1.5, true); }
   if (actions.restart) restart();
+  else if (actions.restartPad) {
+    // (la croix ne fait pas abandonner une course en ligne par mégarde : c'est Entrée, exprès)
+    if (netRace && phase !== 'finished') showMessage('', 'En ligne : Entrée pour abandonner et repartir seul', 1.8, true);
+    else restart();
+  }
   if (actions.peloton) {
     if (phase === 'hut' || phase === 'finished') setPeloton(!pelotonOn);
     else showMessage('', 'Le départ se choisit avant la manche (Entrée pour recommencer)', 1.8, true);
@@ -876,6 +949,7 @@ function frame(now) {
     n++;
   }
   if (n === maxSteps) acc = 0;
+  if (auto && phase === 'ride') assisted = true;
 
   // Chute, sortie de piste : on repart du dernier point.
   const crash = sim.bike.crashed;

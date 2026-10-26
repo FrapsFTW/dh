@@ -6,11 +6,40 @@
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { newRoom, handle, leave } from './src/salon.js';
+import { boardName, newBoard, submit, view } from './src/classement.js';
 
 const port = Number(process.argv[2]) || 8787;
 const rooms = new Map(); // code → { room, players: Set }
+const boards = new Map(); // piste.mode → classement (en mémoire : il repart de zéro à chaque lancement)
 
-const http = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }); res.end('Downhill : serveur des salons (local).\n'); });
+const http = createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  const c = url.pathname.match(/^\/classement\/([a-z]+)\/([a-z]+)$/);
+  const reply = (status, o) => {
+    res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' });
+    res.end(o === undefined ? '' : JSON.stringify(o));
+  };
+  if (c) {
+    const name = boardName(c[1], c[2]);
+    if (req.method === 'OPTIONS') return reply(204);
+    if (!name) return reply(404, { error: 'piste ou mode inconnu' });
+    const board = boards.get(name) || newBoard();
+    if (req.method === 'GET') return reply(200, view(board, url.searchParams.get('id')));
+    let text = '';
+    req.on('data', (d) => { text += d; });
+    req.on('end', () => {
+      let msg;
+      try { msg = JSON.parse(text); } catch { return reply(400, { error: 'JSON' }); }
+      const r = submit(board, msg, c[1], Date.now());
+      if (!r.ok) return reply(400, { error: r.reason });
+      boards.set(name, r.board);
+      reply(200, { ...view(r.board, msg.id), improved: r.improved });
+    });
+    return;
+  }
+  res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+  res.end('Downhill : serveur des salons (local).\n');
+});
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
 
 http.on('upgrade', (req, socket, head) => {

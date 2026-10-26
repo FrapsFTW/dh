@@ -1,14 +1,17 @@
 // Le serveur des salons, sur Cloudflare : un Worker qui envoie chaque connexion à son salon, et un Durable Object par
 // salon (un petit programme qui garde l'état d'un salon et ses connexions, près des joueurs). Les règles sont dans
-// salon.js.
+// salon.js. Le classement mondial a aussi son Durable Object, un par piste et par mode (règles dans classement.js).
 //
-//   wss://<serveur>/salon/<CODE>   rejoindre un salon (le crée s'il n'existe pas)
+//   wss://<serveur>/salon/<CODE>                           rejoindre un salon (le crée s'il n'existe pas)
+//   GET  https://<serveur>/classement/<piste>/<mode>?id=…  le classement (et la place du pilote id)
+//   POST https://<serveur>/classement/<piste>/<mode>       envoyer un temps : {id, name, color, time}
 //
 // Les connexions « hibernent » quand personne ne parle : le salon peut s'endormir sans les couper (et sans compter du
 // temps de calcul). L'état du salon est donc rangé dans son stockage, et chaque connexion porte sa fiche de joueur.
 
 import { DurableObject } from 'cloudflare:workers';
 import { newRoom, handle, leave } from './salon.js';
+import { boardName, newBoard, submit, view } from './classement.js';
 
 const CODE = /^[A-Z0-9]{4,8}$/;
 /** Plus gros message accepté (une pose fait environ 200 octets). */
@@ -17,6 +20,15 @@ const MSG_MAX = 2048;
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    const c = url.pathname.match(/^\/classement\/([a-z]+)\/([a-z]+)$/);
+    if (c) {
+      // (le jeu est servi ailleurs, sur GitHub Pages : il faut l'autoriser à lire les réponses)
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-headers': 'content-type' } });
+      const name = boardName(c[1], c[2]);
+      if (!name) return json({ error: 'piste ou mode inconnu' }, 404);
+      if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'GET ou POST' }, 405);
+      return env.CLASSEMENT.get(env.CLASSEMENT.idFromName(name)).fetch(req);
+    }
     const m = url.pathname.match(/^\/salon\/([^/]+)$/);
     if (!m) return new Response('Downhill : serveur des salons.\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     const code = m[1].toUpperCase();
@@ -91,3 +103,38 @@ export class Salon extends DurableObject {
 }
 
 const strip = ({ ws, ...p }) => p;
+
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
+const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+/** Plus gros envoi de temps accepté. */
+const POST_MAX = 512;
+/** Un envoi au plus toutes les quelques secondes par adresse (un temps, c'est une manche finie). */
+const POST_EVERY = 3000;
+
+/** Le classement d'une piste dans un mode : le meilleur temps de chaque pilote, rangé dans le stockage. */
+export class Classement extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.board = null;
+    this.lastPost = new Map();
+    ctx.blockConcurrencyWhile(async () => { this.board = (await ctx.storage.get('board')) || newBoard(); });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    const map = url.pathname.split('/')[2];
+    if (req.method === 'GET') return json(view(this.board, url.searchParams.get('id')));
+    const ip = req.headers.get('cf-connecting-ip') || '?', now = Date.now();
+    if (now - (this.lastPost.get(ip) || 0) < POST_EVERY) return json({ error: 'trop vite' }, 429);
+    this.lastPost.set(ip, now);
+    if (this.lastPost.size > 5000) this.lastPost.clear();
+    const text = await req.text();
+    if (text.length > POST_MAX) return json({ error: 'trop long' }, 413);
+    let msg;
+    try { msg = JSON.parse(text); } catch { return json({ error: 'JSON' }, 400); }
+    const res = submit(this.board, msg, map, now);
+    if (!res.ok) return json({ error: res.reason }, 400);
+    if (res.board !== this.board) { this.board = res.board; await this.ctx.storage.put('board', res.board); }
+    return json({ ...view(this.board, msg.id), improved: res.improved });
+  }
+}

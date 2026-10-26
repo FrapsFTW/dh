@@ -55,9 +55,15 @@
     .classement .nm { flex: 1; }
     .classement .d { width: 64px; text-align: right; color: var(--muted); font-size: 13px; }
     .classement .dots { text-align: center; color: var(--muted); line-height: 1; }
+    .classement .p.r1 { color: #f2c94c; } .classement .p.r2 { color: #d9dde3; } .classement .p.r3 { color: #d8955a; }
+    .classement .lbHead { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+    .classement .lbInfo { font-size: 14px; color: var(--muted); padding: 6px 0; }
+    .classement.lb { margin-top: 16px; max-width: 620px; }
+    .lbRow { margin-top: 8px; align-items: center; }
+    #lbName { margin-left: 14px; }
     /* Le jeu en ligne : le salon, sur l'écran d'accueil. */
     #online .olRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-    #online input { font: inherit; font-size: 15px; font-weight: 700; color: var(--fg); background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.18); padding: 6px 10px; width: 170px; }
+    #online input, #lbName { font: inherit; font-size: 15px; font-weight: 700; color: var(--fg); background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.18); padding: 6px 10px; width: 170px; }
     #online input#olCode { width: 90px; text-transform: uppercase; letter-spacing: .12em; }
     #online button, #results button { font: inherit; font-weight: 800; font-size: 14px; color: var(--fg); background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); padding: 6px 12px; cursor: pointer; }
     #online button.main, #results button.main { background: #1d5fb8; border-color: #1d5fb8; }
@@ -202,6 +208,7 @@
       <nav id="mTabs">
         <button class="mNav" data-tab="pistes">Pistes</button>
         <button class="mNav" data-tab="course">Course</button>
+        <button class="mNav" data-tab="classement">Classement</button>
         <button class="mNav" data-tab="online">En ligne</button>
         <button class="mNav" data-tab="commandes">Commandes</button>
         <button class="mNav" data-tab="options">Options</button>
@@ -232,6 +239,13 @@
         <p class="blurb">Ton meilleur temps sur cette piste, dans ce mode, rejoué à côté de toi.</p>
         <p class="blurb intro">Une manche chronométrée, comme en Coupe du monde : départ dans la cabane, des temps intermédiaires, un radar avant le saut final. Le vélo est simulé : le grip est limité, freiner en virage fait glisser, le frein avant à fond dans la pente fait passer par-dessus le guidon. Il faut rester entre les rubalises.</p>
       </section>
+      <section data-panel="classement" class="hidden">
+        <h2>Classement mondial</h2>
+        <div class="seg"><button data-lbmap="foret">La Forêt</button><button data-lbmap="alpes">La Grande Combe</button><button data-lbmap="avalanche">L'Avalanche</button><button data-lbmap="bikepark">Le Bike Park</button><button data-lbmap="single">Le Single</button></div>
+        <div class="seg lbRow"><button data-lbmode="normal">Normal</button><button data-lbmode="ultra">Ultra-réaliste</button><input id="lbName" maxlength="20" placeholder="Ton nom" autocomplete="nickname" /></div>
+        <div id="lbList" class="classement lb"></div>
+        <p class="blurb">Le meilleur temps de chaque pilote, en contre la montre. Ne comptent pas : le pilote automatique, le départ en ligne, les courses en ligne et les réglages avancés retouchés. Ton nom est le même que dans le salon en ligne.</p>
+      </section>
       <section data-panel="online" class="hidden">
         <h2>En ligne avec tes potes</h2>
         <div id="online">
@@ -259,7 +273,7 @@
           <tr><td>Regarder autour</td><td>stick droit</td><td></td></tr>
           <tr><td>Repartir du dernier point</td><td><kbd>Y</kbd> ou <kbd>B</kbd></td><td><kbd>R</kbd></td></tr>
           <tr><td>Menu (met la manche en pause)</td><td><kbd>Start</kbd></td><td><kbd>Échap</kbd> ou <kbd>H</kbd></td></tr>
-          <tr><td>Recommencer la manche</td><td>dans le menu</td><td><kbd>Entrée</kbd></td></tr>
+          <tr><td>Recommencer la manche</td><td>croix ↓</td><td><kbd>Entrée</kbd></td></tr>
           <tr><td>Vue extérieure · fantôme du record</td><td><kbd>Select</kbd></td><td><kbd>C</kbd> · <kbd>F</kbd></td></tr>
           <tr><td>Changer de mode (avant le départ)</td><td><kbd>LB</kbd></td><td><kbd>M</kbd></td></tr>
           <tr><td>Départ en ligne ou contre la montre</td><td></td><td><kbd>N</kbd></td></tr>
@@ -291,7 +305,7 @@
       <div class="final" id="resTime">0:00.00</div>
       <div id="resDelta" style="font-weight:800;font-size:18px"></div>
       <div id="resRows" style="margin-top:14px"></div>
-      <div class="go" id="resGo">Entrée ou Start : nouvelle manche · F : affronter ton fantôme</div>
+      <div class="go" id="resGo">A, Entrée ou croix ↓ : nouvelle manche · F : affronter ton fantôme</div>
       <div class="resBtns"><button id="resAgain" class="main">Nouvelle manche</button><button id="resMenu">Menu</button></div>
       <div class="olRow hidden" id="resOnline" style="margin-top:12px;display:flex;gap:10px;align-items:center"><button id="olAgain" class="main">Nouvelle course</button><span id="olAgainInfo" style="font-size:13px;color:rgba(255,255,255,.75)"></span></div>
     </div>

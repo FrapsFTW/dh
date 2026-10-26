@@ -17,7 +17,8 @@ Puis ouvrir http://localhost:5180. Une manette est fortement conseillée : tout 
 
 Le menu s'ouvre au lancement, puis à tout moment avec Échap (ou H) au clavier, Start à la manette ; ouvert pendant une
 manche, il la met en pause (sauf en ligne). On y choisit la piste (une carte par piste, avec son record), le mode, le
-départ et le fantôme, le salon en ligne, les commandes, les options (graphismes élevés ou légers, caméra, volumes).
+départ et le fantôme, le classement mondial, le salon en ligne, les commandes, les options (graphismes élevés ou
+légers, caméra, volumes).
 Changer de piste se fait directement, même en pleine manche. À la manette : la croix ou le stick vers le bouton voisin,
 A pour choisir, B pour revenir, LB / RB pour passer d'une rubrique à l'autre.
 
@@ -33,7 +34,7 @@ A pour choisir, B pour revenir, LB / RB pour passer d'une rubrique à l'autre.
 | Regarder autour | stick droit | |
 | Repartir du dernier point | Y ou B | R |
 | Menu (et pause) | Start | Échap ou H |
-| Recommencer la manche | dans le menu | Entrée |
+| Recommencer la manche | croix ↓ | Entrée |
 | Vue extérieure | Select | C |
 | Fantôme du record | | F |
 | Changer de mode (avant le départ) | LB | M |
@@ -92,6 +93,19 @@ renvoie en arrière, et le chrono continue. Après une chute ou une sortie, on r
 (il y en a un tous les 150 m environ, jamais sur un saut, et jamais au-delà d'une porte qu'on n'a pas passée). Le meilleur temps est enregistré dans le navigateur avec la
 trajectoire complète : on peut ensuite courir contre son fantôme (touche F).
 
+### Le classement mondial
+
+Chaque manche finie en contre la montre part au classement de la piste et du mode : le meilleur temps de chaque
+pilote, avec son nom (le même que dans le salon en ligne) et la couleur de sa tenue. L'écran d'arrivée donne sa place
+et ses voisins ; la rubrique Classement du menu montre les cinquante premiers de chaque piste. Les records déjà faits
+dans le navigateur y entrent en ouvrant la rubrique. Ne comptent pas : le pilote automatique (même un instant), le
+départ en ligne, les courses en ligne, les réglages avancés retouchés et `?seed`.
+
+Le classement est gardé par le serveur des salons (un Durable Object par piste et par mode, règles dans
+`server/src/classement.js`, testées par `npm test`). Un pilote, c'est un identifiant tiré au hasard par son navigateur,
+jamais montré aux autres. Le serveur ne rejoue pas la manche : il refuse seulement les temps impossibles (plus
+rapides qu'environ 60 % du meilleur pilote automatique).
+
 ### Le départ en ligne
 
 Avec la touche N (ou dans le menu, rubrique Course), on part en ligne avec vingt rivaux, en rangs de trois sur une
@@ -137,6 +151,8 @@ npm install
 npx wrangler login     # ouvre le navigateur : se connecter à son compte Cloudflare (gratuit)
 npx wrangler deploy    # affiche l'adresse du serveur : https://dh-salons.<compte>.workers.dev
 ```
+
+(à refaire quand `server/` change : par exemple pour le classement mondial)
 
 Le jeu en ligne joint `wss://dh-salons.downhill.workers.dev` (`SERVEUR`, dans `src/net/online.js`). Pour un autre
 serveur : la variable `SERVEUR` du dépôt GitHub (Settings → Secrets and variables → Actions → Variables), que la mise

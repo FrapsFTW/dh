@@ -2,8 +2,8 @@
 //
 // Manette : stick gauche = tourner (gauche/droite) et poids (avant/arrière), gâchette droite = frein avant,
 // gâchette gauche = frein arrière, A = se comprimer puis sauter (maintenir, relâcher), X ou RB = pédaler,
-// stick droit = regarder autour, Y ou B = repartir du dernier point, Start = le menu (et la pause), Select = caméra,
-// LB = changer de mode (avant le départ). En l'air, A maintenu = se grouper pour une figure, le stick choisit laquelle.
+// stick droit = regarder autour, Y ou B = repartir du dernier point, croix vers le bas = recommencer la manche,
+// Start = le menu (et la pause), Select = caméra, LB = changer de mode (avant le départ). En l'air, A maintenu = se grouper pour une figure, le stick choisit laquelle.
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const approach = (v, target, up, down, dt) => {
@@ -36,7 +36,7 @@ const ACTIONS = {
   mode: ['Semicolon', 'KeyM'], // la touche M d'un clavier AZERTY, ou d'un QWERTY
 };
 // Manette au format standard (Xbox, PlayStation…).
-const PAD = { hop: 0, respawnB: 1, pedal: 2, respawn: 3, mode: 4, pedalRB: 5, brakeRear: 6, brakeFront: 7, camera: 8, menu: 9 };
+const PAD = { hop: 0, respawnB: 1, pedal: 2, respawn: 3, mode: 4, pedalRB: 5, brakeRear: 6, brakeFront: 7, camera: 8, menu: 9, restart: 13 };
 
 export class Input {
   constructor() {
@@ -110,6 +110,7 @@ export class Input {
       }
       if (hit(PAD.respawn) || hit(PAD.respawnB)) actions.respawn = true;
       if (hit(PAD.menu)) actions.menu = true;
+      if (hit(PAD.restart)) actions.restartPad = true;
       if (hit(PAD.camera)) actions.camera = true;
       if (hit(PAD.mode)) actions.mode = true;
       if (hit(PAD.pedal) || hit(PAD.pedalRB) || hit(PAD.hop)) actions.start = true;

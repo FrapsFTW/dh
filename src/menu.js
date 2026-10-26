@@ -1,13 +1,14 @@
 // Le menu : ouvert par Échap, H ou Start, à tout moment (main.js met la manche en pause tant qu'il est ouvert, sauf en
 // ligne). À gauche, le titre, « Rouler » et les rubriques ; à droite, la rubrique choisie (Pistes, Course, En ligne,
-// Commandes, Options). Ici : l'affichage des rubriques, et la navigation au clavier (flèches) et à la manette (croix
+// Classement, Commandes, Options). Ici : l'affichage des rubriques, et la navigation au clavier (flèches) et à la manette (croix
 // ou stick vers le bouton le plus proche dans cette direction, A pour choisir, B pour revenir, LB / RB pour changer de
 // rubrique). Ce que font les boutons est dans main.js.
 
 const PAD = { a: 0, b: 1, lb: 4, rb: 5, up: 12, down: 13, left: 14, right: 15 };
 const REPEAT_DELAY = 0.35, REPEAT_EVERY = 0.12; // stick ou croix maintenus : un pas, puis des pas réguliers
 
-export function createMenu() {
+/** onTab(t) : appelé à chaque changement de rubrique (le classement se charge quand on l'ouvre). */
+export function createMenu({ onTab } = {}) {
   const root = document.getElementById('menu');
   const tabButtons = [...root.querySelectorAll('[data-tab]')];
   const tabs = tabButtons.map((b) => b.dataset.tab);
@@ -20,6 +21,7 @@ export function createMenu() {
     tab = t;
     for (const b of tabButtons) b.classList.toggle('on', b.dataset.tab === t);
     for (const s of root.querySelectorAll('[data-panel]')) s.classList.toggle('hidden', s.dataset.panel !== t);
+    if (onTab) onTab(t);
   }
   setTab(tab);
   for (const b of tabButtons) b.addEventListener('click', () => setTab(b.dataset.tab));

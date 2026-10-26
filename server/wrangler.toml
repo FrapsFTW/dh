@@ -7,7 +7,16 @@ compatibility_date = "2025-09-01"
 name = "SALON"
 class_name = "Salon"
 
+# Le classement mondial : un par piste et par mode.
+[[durable_objects.bindings]]
+name = "CLASSEMENT"
+class_name = "Classement"
+
 # (les Durable Objects de l'offre gratuite gardent leur stockage dans SQLite)
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Salon"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Classement"]
