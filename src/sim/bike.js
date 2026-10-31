@@ -91,16 +91,6 @@ export const DEFAULT_PARAMS = {
   leanBudgetMaxDeg: 55,
   leanHardCeilDeg: 85,
   bankTime: 0.25,
-  // À basse vitesse, le pilote couche le vélo sous lui d'un coup de hanches, sans attendre que le contre-braquage le
-  // fasse pencher : il tourne court et tout de suite. L'effet s'efface entre ces deux vitesses (m/s).
-  agileFullSpeed: 4.5,
-  agileEndSpeed: 11,
-  agileLeanDeg: 10, // l'inclinaison permise en plus au pas (40° au lieu de 30°)
-  agileLeanK: 1000, // le couple qui couche le vélo (N·m/rad)
-  agileLeanC: 170,
-  agileLeanMax: 320,
-  agileCounter: 0.75, // la part du contre-braquage qu'il n'a plus à faire
-  agileSteerRate: 2, // sa consigne de courbe s'établit (1 + ceci) fois plus vite
   // Le pilote
   reachFwd: 0.3, // jusqu'où il avance ses hanches (m)
   reachBack: 0.65, // jusqu'où il les recule
@@ -352,8 +342,7 @@ export class Bike {
     // ----- La courbe demandée, et l'inclinaison qu'elle réclame -----
     const steerMax = P.steerMaxDeg * DEG;
     const kGeom = (Math.tan(steerMax - P.feedbackReserveDeg * DEG) * this.steerTiltCos) / GEO.wheelbase;
-    const agile = 1 - smoothstep(P.agileFullSpeed, P.agileEndSpeed, Math.abs(vF));
-    const budget = (side) => clamp((P.maxLeanDeg + P.agileLeanDeg * agile) * DEG + side * this.bank, P.leanBudgetMinDeg * DEG, P.leanBudgetMaxDeg * DEG);
+    const budget = (side) => clamp(P.maxLeanDeg * DEG + side * this.bank, P.leanBudgetMinDeg * DEG, P.leanBudgetMaxDeg * DEG);
     const ceil = (side) => Math.min(P.leanBudgetMaxDeg * DEG + Math.max(side * this.bank, 0), P.leanHardCeilDeg * DEG);
     const comH = Math.max(this.comLocal.y, 0.2);
     const shiftLean = Math.atan((P.riderFraction * P.turnShift) / comH);
@@ -361,11 +350,9 @@ export class Bike {
     const kLeft = Math.min(kGeom, (G * Math.tan(Math.min(budget(-1) + shiftLean, ceil(-1)))) / Math.max(v2, 1e-3));
     this.kappaMax.right = kRight; this.kappaMax.left = kLeft;
     const steerIn = crashed ? 0 : clamp(inp.steer, -1, 1);
-    // (seulement s'il demande un vrai virage : en ligne droite, le vélo se tient comme à pleine vitesse)
-    const agileTurn = agile * smoothstep(0.2, 0.6, Math.abs(steerIn));
     const kCmd = steerIn * (steerIn > 0 ? kRight : kLeft); // > 0 : virage à droite
     // En l'air, la courbe ne change pas : on ne prépare pas un virage sans appui.
-    const kRate = this.airTime > 0.05 ? 0 : ((1 + P.agileSteerRate * agileTurn) * P.maxLeanRateDeg * DEG * G) / Math.max(v2, G * GEO.wheelbase);
+    const kRate = this.airTime > 0.05 ? 0 : (P.maxLeanRateDeg * DEG * G) / Math.max(v2, G * GEO.wheelbase);
     this.kappa += clamp(kCmd - this.kappa, -kRate * dt, kRate * dt);
     this.kappa = clamp(this.kappa, -kLeft, kRight);
     const leanCurve = Math.atan((v2 * this.kappa) / G);
@@ -419,7 +406,7 @@ export class Bike {
       const fbMax = P.maxFeedbackDeg * DEG;
       // La correction d'équilibre ne sert que si la roue avant porte : sinon (en l'air, roue avant délestée),
       // le pilote garde le guidon droit pour la reprise d'appui.
-      const fb = clamp(P.leanErrorGain * leanErr + P.leanRateGain * leanRate, -fbMax, fbMax) * this.frontGrip * (1 - P.agileCounter * agileTurn);
+      const fb = clamp(P.leanErrorGain * leanErr + P.leanRateGain * leanRate, -fbMax, fbMax) * this.frontGrip;
       const air = smoothstep(0.02, 0.08, this.airTime);
       steerTarget = clamp((ff + fb) * (1 - air), -steerMax, steerMax);
     }
@@ -516,8 +503,6 @@ export class Bike {
         // À très basse vitesse, le pilote tient le vélo debout (un pied par terre).
         const fade = Math.max(0, 1 - Math.abs(vF) / P.balanceAssistFade);
         if (fade > 0) torque.addScaledVector(bflat, fade * (-P.balanceAssistK * leanErr - P.balanceAssistC * leanRate));
-        // Au pas, il couche le vélo d'un coup de hanches (voir agile), si les deux roues portent.
-        if (agileTurn > 0 && wf.grounded && wr.grounded) torque.addScaledVector(bflat, agileTurn * clamp(-P.agileLeanK * leanErr - P.agileLeanC * leanRate, -P.agileLeanMax, P.agileLeanMax));
       } else {
         const weight = clamp(inp.weight, -1, 1);
         if (this.tuck > 0.02) {

@@ -625,25 +625,6 @@ test('Les Ruelles : des pavés, des escaliers de vraies marches en pierre, des r
   assert.ok(narrow / n > 0.45, `étroit sur ${((narrow / n) * 100).toFixed(0)} % seulement`);
 });
 
-test('à basse vitesse, le vélo tourne court et tout de suite ; à pleine vitesse, il ne change pas', () => {
-  const sim = createSim({ map: 'ville', mode: 'normal' }), t = sim.track;
-  const turn = (v) => {
-    sim.bike.placeOnTrack(t.length - 45, v);
-    sim.race.s = t.length - 45;
-    let turned = 0, prev = heading(sim.bike.state()), time = 0, dist = 0;
-    while (Math.abs(turned) < Math.PI / 4 && time < 3) {
-      const st = sim.bike.state();
-      sim.step({ ...idle, steer: 1, pedal: st.forwardSpeed < v ? 1 : 0, brakeRear: st.forwardSpeed > v + 0.1 ? 0.15 : 0 });
-      const h = heading(sim.bike.state());
-      turned += Math.atan2(Math.sin(h - prev), Math.cos(h - prev));
-      prev = h; time += STEP; dist += sim.bike.state().speed * STEP;
-    }
-    return { time, dist };
-  };
-  assert.ok(turn(3.5).time < 0.8, `45° à 3,5 m/s en ${turn(3.5).time.toFixed(2)} s`);
-  assert.ok(turn(5).time < 1, `45° à 5 m/s en ${turn(5).time.toFixed(2)} s`);
-});
-
 test('Les Ruelles : une chaussée de ville, plate, sans virage relevé ni herbe, entre des murs', () => {
   const t = tracks.ville;
   assert.ok(t.walls.length > 50, `${t.walls.length} murs`);
