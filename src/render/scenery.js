@@ -4,6 +4,7 @@
 //   côté de la ligne, la tour du speaker au Big One.
 // - 'riviera' (Le Single, comme à Finale Ligure) : les murets de pierre sèche des anciennes terrasses (le sentier
 //   passe par leurs brèches), des maisons ligures (crépi pastel, tuiles, volets verts) en bas, et une chapelle.
+// - 'ville' (Les Ruelles) : les maisons peintes, les marches, les murets, les rues à sauter, le passage voûté (plus bas).
 // Rien ici ne touche la physique : tout se tient à l'écart de la rubalise.
 
 import * as THREE from 'three';
@@ -76,6 +77,7 @@ export function createScenery(track) {
   const kind = track.map.scenery;
   if (kind === 'bikepark') bikePark(track, group);
   if (kind === 'riviera') riviera(track, group);
+  if (kind === 'ville') ville(track, group);
   return { group };
 }
 
@@ -449,4 +451,374 @@ function riviera(track, group) {
   wallGeos.forEach((geos, i) => { if (geos.length) group.add(solid(geos, wallMats[i])); });
   if (roofGeos.length) group.add(solid(roofGeos.map((g) => (g.index ? g.toNonIndexed() : g)), roofMat));
   if (shutGeos.length) group.add(solid(shutGeos, shutterMat), solid(sillGeos, sillMat));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 'ville' (Les Ruelles) : les maisons peintes qui bordent la descente (posées par la piste : track.buildings, ce sont
+// aussi des obstacles), leurs fenêtres, volets, portes et balcons, quelques fresques ; les marches de pierre et leurs
+// rampes, les murets des drops, les rues qu'on saute (asphalte, voitures garées), le passage voûté, les câbles et les
+// fanions en travers des ruelles, des lanternes ; l'église en haut, des barques en bas.
+// ---------------------------------------------------------------------------------------------------------------
+function ville(track, group) {
+  const rand = rng(track.seed + 818);
+  const up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+  const plaster = photo('crepi', 1 / 1.4);
+  // Les couleurs des maisons : vives, comme dans les villes des collines au-dessus des ports du Pacifique.
+  const COLORS = ['#e8473b', '#f2b134', '#3a8fd6', '#2fb37a', '#f07ca8', '#8a5bd1', '#f4e3c1', '#35c0c9', '#ff8c42', '#cfd84a', '#f6f1e7', '#5b6fd6'];
+  const WHITE = 10;
+  const wallMats = COLORS.map((c) => new THREE.MeshStandardMaterial({ ...plaster, color: lin(c), roughness: 0.95 }));
+  const trimMat = new THREE.MeshStandardMaterial({ ...plaster, color: lin('#f3eee4'), roughness: 0.9 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: lin('#1b2329'), roughness: 0.08 });
+  const ironMat = new THREE.MeshStandardMaterial({ color: lin('#222326'), roughness: 0.6, metalness: 0.4 });
+  const doorMat = new THREE.MeshStandardMaterial({ ...photo('bois', 1), color: lin('#7a4a2c'), roughness: 0.85 });
+  const SHUT = ['#2f6b4a', '#1f4f8a', '#a63b2c', '#f2ece0', '#2a8a8a', '#3b3b3b'];
+  const shutMats = SHUT.map((c) => new THREE.MeshStandardMaterial({ color: lin(c), roughness: 0.7 }));
+  const stoneMat = new THREE.MeshStandardMaterial({ ...photo('pierre', 1), color: lin('#d9d3c7'), roughness: 0.95, side: THREE.DoubleSide });
+  const tiles = canvasTex(256, 256, (ctx, w, h) => {
+    for (let y = 0; y < h; y += 32) for (let x = 0; x < w; x += 24) {
+      const g = ctx.createLinearGradient(x, 0, x + 24, 0);
+      const l = 40 + ((x * 7 + y * 3) % 9);
+      g.addColorStop(0, `hsl(14, 50%, ${l - 12}%)`); g.addColorStop(0.5, `hsl(17, 56%, ${l + 6}%)`); g.addColorStop(1, `hsl(14, 50%, ${l - 14}%)`);
+      ctx.fillStyle = g; ctx.fillRect(x, y, 24, 32);
+      ctx.fillStyle = 'rgba(40,15,5,0.35)'; ctx.fillRect(x, y + 29, 24, 3);
+    }
+  }, true);
+  const roofMat = new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.75, side: THREE.DoubleSide });
+  // Des fresques peintes sur quelques façades.
+  const PAL = ['#ffcf3f', '#ff5a4e', '#2bb3d6', '#38c07a', '#ff8fc2', '#6e4bd8', '#ffffff', '#152238'];
+  const murals = [0, 1, 2, 3].map((k) => new THREE.MeshStandardMaterial({ roughness: 0.9, map: canvasTex(512, 256, (ctx, w, h) => {
+    const r = rng(40 + k);
+    ctx.fillStyle = PAL[k + 3]; ctx.fillRect(0, 0, w, h);
+    if (k === 0) { // un soleil et des vagues
+      ctx.fillStyle = PAL[0]; ctx.beginPath(); ctx.arc(w * 0.7, h * 0.4, 70, 0, 7); ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        ctx.strokeStyle = PAL[(i + 1) % 7]; ctx.lineWidth = 14; ctx.beginPath();
+        for (let x = 0; x <= w; x += 8) ctx.lineTo(x, h * 0.62 + i * 20 + Math.sin(x / 30 + i) * 10);
+        ctx.stroke();
+      }
+    } else if (k === 1) { // des bandes en zigzag
+      for (let i = 0; i < 9; i++) {
+        ctx.fillStyle = PAL[i % 7]; ctx.beginPath();
+        for (let x = 0; x <= w; x += 32) ctx.lineTo(x, i * 30 + ((x / 32) % 2) * 18);
+        for (let x = w; x >= 0; x -= 32) ctx.lineTo(x, i * 30 + 26 + ((x / 32) % 2) * 18);
+        ctx.fill();
+      }
+    } else if (k === 2) { // un visage, des confettis
+      for (let i = 0; i < 40; i++) { ctx.fillStyle = PAL[Math.floor(r() * 7)]; ctx.beginPath(); ctx.arc(r() * w, r() * h, 6 + r() * 16, 0, 7); ctx.fill(); }
+      ctx.fillStyle = PAL[0]; ctx.beginPath(); ctx.ellipse(w / 2, h / 2, 90, 110, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = PAL[7]; for (const x of [-35, 35]) { ctx.beginPath(); ctx.arc(w / 2 + x, h / 2 - 20, 14, 0, 7); ctx.fill(); }
+      ctx.strokeStyle = PAL[1]; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(w / 2, h / 2 + 20, 40, 0.2, Math.PI - 0.2); ctx.stroke();
+    } else { // des cercles et des triangles
+      for (let i = 0; i < 26; i++) {
+        ctx.fillStyle = PAL[Math.floor(r() * 7)];
+        const x = r() * w, y = r() * h, s = 20 + r() * 60;
+        ctx.beginPath();
+        if (r() < 0.5) ctx.arc(x, y, s / 2, 0, 7); else { ctx.moveTo(x, y - s / 2); ctx.lineTo(x + s / 2, y + s / 2); ctx.lineTo(x - s / 2, y + s / 2); }
+        ctx.fill();
+      }
+    }
+  }) }));
+
+  const walls = COLORS.map(() => []), trims = [], roofs = [], glass = [], irons = [], doors = [], shuts = SHUT.map(() => []), stones = [];
+  const muralGeos = murals.map(() => []);
+
+  // ----- Les maisons -----
+  for (const b of track.buildings) {
+    const q = new THREE.Quaternion().setFromAxisAngle(up, b.yaw);
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(b.x, b.y, b.z), q, one);
+    const put = (g, arr) => arr.push(g.applyMatrix4(m));
+    // (plus hautes qu'il ne faut pour l'obstacle : deux à quatre étages au-dessus de la rue)
+    const H = b.h + 1.5 + b.hue * 4;
+    const wg = new THREE.BoxGeometry(b.d, H, b.w).translate(0, H / 2, 0);
+    const uvA = wg.attributes.uv;
+    for (let i = 0; i < uvA.count; i++) uvA.setXY(i, (uvA.getX(i) * Math.max(b.d, b.w)) / 3, (uvA.getY(i) * H) / 3);
+    put(wg, walls[Math.floor(b.hue * 7919) % COLORS.length]);
+    // Le toit : en terrasse, bordé d'une corniche claire (deux maisons sur trois), sinon de tuiles à deux pans.
+    if (b.roof < 0.66) put(new THREE.BoxGeometry(b.d + 0.25, 0.35, b.w + 0.25).translate(0, H + 0.1, 0), trims);
+    else {
+      const rh = 1.4 + b.roof, ox = b.d / 2 + 0.4, oz = b.w / 2 + 0.3;
+      const rg = new THREE.BufferGeometry();
+      rg.setAttribute('position', new THREE.Float32BufferAttribute([-ox, 0, -oz, 0, rh, -oz, ox, 0, -oz, -ox, 0, oz, 0, rh, oz, ox, 0, oz], 3));
+      rg.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, rh, 0, 0, oz, 0, oz, rh, oz, 0].map((x) => x / 1.5), 2));
+      rg.setIndex([0, 1, 3, 1, 4, 3, 1, 2, 4, 2, 5, 4, 0, 2, 1, 3, 4, 5]);
+      rg.computeVertexNormals();
+      put(rg.translate(0, H, 0).toNonIndexed(), roofs);
+    }
+    // Les façades sur les rues : celle qui donne sur la piste (côté -side, x local), et celle de derrière, sur la venelle.
+    const shutArr = shuts[Math.floor(b.roof * 9973) % SHUT.length];
+    for (const face of [-b.side, b.side]) {
+      const fx = face * (b.d / 2);
+      // Le sol de la rue devant la façade : les étages se règlent sur lui.
+      const fw = new THREE.Vector3(fx + face * 0.6, 0, 0).applyQuaternion(q);
+      const gy = track.groundY(b.x + fw.x, b.z + fw.z) - b.y;
+      const nwin = Math.max(1, Math.floor(b.w / 2.5));
+      const onTrack = face === -b.side && !b.row;
+      for (let fl = 0; fl < 6; fl++) {
+        const yy = gy + 1.4 + fl * 2.8;
+        if (yy + 1.4 > H - 0.4) break;
+        if (yy < 0.6) continue;
+        for (let i = 0; i < nwin; i++) {
+          const zc = -b.w / 2 + (b.w / nwin) * (i + 0.5);
+          // Au rez-de-chaussée : une porte au milieu, sous un linteau clair.
+          if (fl === 0 && i === Math.floor(nwin / 2)) {
+            put(new THREE.BoxGeometry(0.12, 2.2, 1.1).translate(fx + face * 0.03, gy + 1.05, zc), doors);
+            put(new THREE.BoxGeometry(0.14, 0.18, 1.4).translate(fx + face * 0.04, gy + 2.25, zc), trims);
+            continue;
+          }
+          put(new THREE.BoxGeometry(0.06, 1.35, 1.0).translate(fx + face * 0.02, yy + 0.6, zc), trims); // l'encadrement
+          put(new THREE.BoxGeometry(0.06, 1.15, 0.8).translate(fx + face * 0.035, yy + 0.6, zc), glass);
+          if (rand() < 0.7) for (const k of [-1, 1]) put(new THREE.BoxGeometry(0.07, 1.25, 0.42).translate(fx + face * 0.05, yy + 0.6, zc + k * 0.66), shutArr);
+          // Un balcon de fer forgé, aux étages.
+          if (fl > 0 && rand() < (onTrack ? 0.3 : 0.12)) {
+            put(new THREE.BoxGeometry(0.75, 0.1, 1.5).translate(fx + face * 0.38, yy - 0.15, zc), trims);
+            put(new THREE.BoxGeometry(0.05, 0.05, 1.5).translate(fx + face * 0.74, yy + 0.8, zc), irons);
+            for (let k = -3; k <= 3; k++) put(new THREE.BoxGeometry(0.03, 0.9, 0.03).translate(fx + face * 0.74, yy + 0.35, zc + k * 0.24), irons);
+            for (const k of [-1, 1]) put(new THREE.BoxGeometry(0.72, 0.05, 0.04).translate(fx + face * 0.38, yy + 0.8, zc + k * 0.74), irons);
+          }
+        }
+      }
+      // Une fresque, sur quelques façades de la piste.
+      if (onTrack && b.w > 7 && rand() < 0.16) {
+        const mh = Math.min(3.6, H - gy - 3.2), mw = b.w * 0.75;
+        if (mh > 1.8) put(new THREE.PlaneGeometry(mw, mh).rotateY(face * Math.PI / 2).translate(fx + face * 0.09, gy + 0.5 + mh / 2, 0), muralGeos[Math.floor(rand() * murals.length)]);
+      }
+    }
+  }
+
+  // ----- Les marches : des blocs de pierre d'une façade à l'autre, le dessus de chaque marche au ras du sol -----
+  const rail = (a, b, r = 0.025) => {
+    const d = new THREE.Vector3().subVectors(b, a), g = new THREE.CylinderGeometry(r, r, d.length(), 6);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, d.clone().normalize()));
+    return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  };
+  for (const f of track.features.filter((f) => f.type === 'stairs')) {
+    for (let s0 = f.a; s0 < f.b - 0.01; s0 += f.step) {
+      const s1 = Math.min(f.b, s0 + f.step), fr = frameAt(track, (s0 + s1) / 2), half = track.tapeAt(s0) + 1.1;
+      // (le dessus juste au-dessus du sol de la piste, sur toute la largeur : la trace est un peu creusée au milieu)
+      const top = Math.max(...[-2, -1, 0, 1, 2].map((u) => track.trailY(s0 + 0.05, u))) + 0.02;
+      stones.push(new THREE.BoxGeometry(half * 2, 0.7, s1 - s0 + 0.04).translate(0, -0.35, 0).rotateY(fr.yaw).translate(fr.pos.x, top, fr.pos.z));
+      // le nez de la marche, en pierre claire : on voit où elle tombe
+      const nose = frameAt(track, s1 - 0.09);
+      trims.push(new THREE.BoxGeometry(half * 2, 0.08, 0.2).rotateY(fr.yaw).translate(nose.pos.x, top - 0.035, nose.pos.z));
+    }
+    // La rampe de fer, de chaque côté, sur des poteaux tous les 2 m.
+    for (const side of [-1, 1]) {
+      let prev = null;
+      for (let s = f.a; s <= f.b + 0.01; s += 2) {
+        const fr = frameAt(track, s, side * (track.tapeAt(s) + 0.35));
+        const head = fr.pos.clone().add(new THREE.Vector3(0, 0.95, 0));
+        irons.push(rail(fr.pos, head, 0.03));
+        if (prev) irons.push(rail(prev, head));
+        prev = head;
+      }
+    }
+  }
+
+  // ----- Les murets des drops : la face de pierre sous la lèvre, et un chapeau de pierre -----
+  for (const f of track.features.filter((f) => f.type === 'jump' && f.look === 'muret')) {
+    const half = track.tapeAt(f.lipS) + 1.1, fr = frameAt(track, f.lipS + 0.15);
+    const top = track.trailY(f.lipS - 0.05, 0) + 0.03, bottom = track.trailY(f.lipS + f.knuckle + 0.6, 0) - 0.3;
+    stones.push(new THREE.BoxGeometry(half * 2, top - bottom, 0.5).translate(0, (top - bottom) / 2, 0).rotateY(fr.yaw).translate(fr.pos.x, bottom, fr.pos.z));
+    trims.push(new THREE.BoxGeometry(half * 2, 0.12, 0.6).rotateY(fr.yaw).translate(fr.pos.x, top - 0.06, fr.pos.z));
+  }
+
+  // ----- Les rues qu'on saute : de l'asphalte, une ligne blanche, des voitures garées -----
+  const asphalt = canvasTex(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#3c3d40'; ctx.fillRect(0, 0, w, h);
+    const r = rng(11);
+    for (let i = 0; i < 4000; i++) { const v = 40 + r() * 50; ctx.fillStyle = `rgb(${v},${v},${v + 3})`; ctx.fillRect(r() * w, r() * h, 1.5, 1.5); }
+    ctx.fillStyle = '#e8e4d8'; ctx.fillRect(w / 2 - 4, 0, 8, h / 2);
+  }, true);
+  const carCols = ['#c62f2f', '#f2f2ee', '#2b4f8c', '#e3b23c', '#1f1f22', '#7fa7b8', '#3f7a52'].map((c) => new THREE.MeshStandardMaterial({ color: lin(c), roughness: 0.35, metalness: 0.3 }));
+  const carGeos = carCols.map(() => []), tyres = [];
+  for (const f of track.features.filter((f) => f.type === 'jump' && f.look === 'rue')) {
+    const sRoad = f.lipS + f.knuckle / 2, fr = frameAt(track, sRoad);
+    const half = Math.min(2.6, f.knuckle / 2 - 0.3), L = 60, n = 120;
+    const pos = [], uv = [], idx = [];
+    for (let i = 0; i <= n; i++) {
+      const t = -L / 2 + (i / n) * L;
+      for (const w of [-half, half]) {
+        const x = fr.pos.x + fr.right.x * t + fr.fwd.x * w, z = fr.pos.z + fr.right.z * t + fr.fwd.z * w;
+        pos.push(x, track.groundY(x, z) + 0.04, z);
+        uv.push(w / (2 * half) + 0.5, t / 6);
+      }
+      if (i < n) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const road = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+    road.receiveShadow = true;
+    group.add(road);
+    // Des voitures garées le long de la rue, loin de la piste.
+    for (let k = 0; k < 4; k++) {
+      const side = k % 2 ? 1 : -1, t = side * (track.tapeAt(sRoad) + 3.5 + rand() * 12);
+      const x = fr.pos.x + fr.right.x * t + fr.fwd.x * (half - 1.1), z = fr.pos.z + fr.right.z * t + fr.fwd.z * (half - 1.1);
+      if (track.insideBuilding(x, z, 2.2)) continue;
+      const cm = new THREE.Matrix4().compose(new THREE.Vector3(x, track.groundY(x, z), z), new THREE.Quaternion().setFromAxisAngle(up, fr.yaw + Math.PI / 2), one);
+      const arr = carGeos[Math.floor(rand() * carCols.length)];
+      arr.push(new THREE.BoxGeometry(1.75, 0.7, 4.1).translate(0, 0.6, 0).applyMatrix4(cm));
+      arr.push(new THREE.BoxGeometry(1.55, 0.55, 2.1).translate(0, 1.22, -0.2).applyMatrix4(cm));
+      glass.push(new THREE.BoxGeometry(1.58, 0.42, 2.0).translate(0, 1.22, -0.2).applyMatrix4(cm));
+      for (const [wx, wz] of [[-0.85, 1.3], [0.85, 1.3], [-0.85, -1.3], [0.85, -1.3]]) tyres.push(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 12).rotateZ(Math.PI / 2).translate(wx, 0.33, wz).applyMatrix4(cm));
+    }
+  }
+
+  // ----- Le passage voûté : la rue passe sous une maison -----
+  for (const f of track.features.filter((f) => f.type === 'arch')) {
+    const sm = (f.a + f.b) / 2, fr = frameAt(track, sm), len = f.b - f.a;
+    const pitch = Math.atan2(track.trailY(f.a, 0) - track.trailY(f.b, 0), len);
+    const half = track.tapeAt(sm) + 0.6, base = 2.3;
+    const am = new THREE.Matrix4().compose(fr.pos, new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, fr.yaw, 0, 'YXZ')), one);
+    // la voûte, les deux murs qui la portent, et la maison au-dessus
+    stones.push(new THREE.CylinderGeometry(half, half, len, 18, 1, true, Math.PI / 2, Math.PI).rotateX(Math.PI / 2).translate(0, base, 0).toNonIndexed().applyMatrix4(am));
+    for (const side of [-1, 1]) stones.push(new THREE.BoxGeometry(0.5, base + 0.6, len).translate(side * (half + 0.25), (base + 0.6) / 2 - 0.6, 0).applyMatrix4(am));
+    walls[1].push(new THREE.BoxGeometry(half * 2 + 1.6, 4.5, len + 0.6).translate(0, base + half + 2.2, 0).applyMatrix4(am));
+    trims.push(new THREE.BoxGeometry(half * 2 + 1.9, 0.3, len + 0.9).translate(0, base + half + 4.5, 0).applyMatrix4(am));
+  }
+
+  // ----- Les câbles et les fanions, d'une façade à l'autre ; des lanternes aux murs -----
+  const cablePts = [], flagPos = [], flagCol = [];
+  const flagCols = ['#e8473b', '#f2b134', '#3a8fd6', '#2fb37a', '#f07ca8', '#ffffff'].map((c) => new THREE.Color(c).convertSRGBToLinear());
+  for (let s = track.sStart + 20; s < track.sFinish - 30; s += 9 + rand() * 7) {
+    if (track.features.some((f) => f.type === 'arch' && s > f.a - 3 && s < f.b + 3)) continue;
+    const u = track.tapeAt(s) + 1.2;
+    const a = frameAt(track, s, -u).pos, b = frameAt(track, s + (rand() - 0.5) * 3, u).pos;
+    const ya = Math.max(a.y, b.y) + 5 + rand() * 1.8, sag = 0.4 + rand() * 0.3;
+    const pts = [];
+    for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector3(a.x + (b.x - a.x) * t, ya - sag * 4 * t * (1 - t), a.z + (b.z - a.z) * t)); }
+    for (let i = 0; i < 12; i++) cablePts.push(pts[i], pts[i + 1]);
+    // Une fois sur deux, des fanions accrochés au câble.
+    if (rand() < 0.55) {
+      for (let i = 0; i < 12; i++) {
+        const p0 = pts[i], p1 = pts[i + 1], mid = p0.clone().lerp(p1, 0.5);
+        flagPos.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, mid.x, mid.y - 0.42, mid.z);
+        const c = flagCols[(i + Math.floor(s)) % flagCols.length];
+        for (let k = 0; k < 3; k++) flagCol.push(c.r, c.g, c.b);
+      }
+    }
+  }
+  if (cablePts.length) group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(cablePts), new THREE.LineBasicMaterial({ color: 0x1a1a1a })));
+  if (flagPos.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(flagPos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(flagCol, 3));
+    g.computeVertexNormals();
+    const flags = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.8 }));
+    flags.castShadow = true;
+    group.add(flags);
+  }
+  const lampMat = new THREE.MeshStandardMaterial({ color: lin('#fff1c8'), emissive: lin('#ffcf7a'), emissiveIntensity: 0.6, roughness: 0.4 });
+  const lamps = [];
+  for (let s = track.sStart + 25, side = 1; s < track.sFinish - 30; s += 14 + rand() * 8, side = -side) {
+    const fr = frameAt(track, s, side * (track.tapeAt(s) + 0.9));
+    const wx = fr.pos.x + fr.right.x * side * 0.9, wz = fr.pos.z + fr.right.z * side * 0.9;
+    if (!track.insideBuilding(wx, wz, 0.1)) continue; // (accrochée à une façade)
+    const y = fr.pos.y + 3.6;
+    irons.push(rail(new THREE.Vector3(wx, y + 0.3, wz), new THREE.Vector3(fr.pos.x, y + 0.3, fr.pos.z), 0.03));
+    lamps.push(new THREE.BoxGeometry(0.24, 0.36, 0.24).translate(fr.pos.x, y, fr.pos.z));
+    irons.push(new THREE.ConeGeometry(0.22, 0.2, 4).rotateY(Math.PI / 4).translate(fr.pos.x, y + 0.28, fr.pos.z));
+  }
+
+  // ----- L'église, au-dessus du départ : une façade blanche, un clocher, un toit de tuiles -----
+  {
+    const f0 = track.sample(track.controlS[0]);
+    const cx = f0.x - f0.tx * 22, cz = f0.z - f0.tz * 22, yaw = Math.atan2(-f0.tx, -f0.tz);
+    const y = Math.min(...[[-7, -10], [7, -10], [7, 10], [-7, 10]].map(([a, b]) => track.groundY(cx + a, cz + b))) - 0.5;
+    const cm = new THREE.Matrix4().compose(new THREE.Vector3(cx, y, cz), new THREE.Quaternion().setFromAxisAngle(up, yaw), one);
+    walls[WHITE].push(new THREE.BoxGeometry(12, 11, 18).translate(0, 5.5, 0).applyMatrix4(cm));
+    walls[WHITE].push(new THREE.BoxGeometry(4.5, 22, 4.5).translate(4.5, 11, -7.5).applyMatrix4(cm));
+    roofs.push(new THREE.ConeGeometry(3.6, 4, 4).rotateY(Math.PI / 4).translate(4.5, 24, -7.5).toNonIndexed().applyMatrix4(cm));
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.Float32BufferAttribute([-6.4, 0, -9.3, 0, 3.4, -9.3, 6.4, 0, -9.3, -6.4, 0, 9.3, 0, 3.4, 9.3, 6.4, 0, 9.3], 3));
+    rg.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 3, 0, 0, 6, 0, 6, 3, 6, 0], 2));
+    rg.setIndex([0, 1, 3, 1, 4, 3, 1, 2, 4, 2, 5, 4, 0, 2, 1, 3, 4, 5]);
+    rg.computeVertexNormals();
+    roofs.push(rg.translate(0, 11, 0).toNonIndexed().applyMatrix4(cm));
+    // la grande porte, la rosace, les ouvertures des cloches (la façade regarde la descente : -z local)
+    doors.push(new THREE.BoxGeometry(2.2, 3.6, 0.2).translate(-1.5, 1.8, -9.05).applyMatrix4(cm));
+    glass.push(new THREE.CylinderGeometry(1.1, 1.1, 0.2, 20).rotateX(Math.PI / 2).translate(-1.5, 7, -9.05).applyMatrix4(cm));
+    for (const [x, z, ry] of [[4.5, -9.8, 0], [4.5, -5.2, 0], [2.2, -7.5, Math.PI / 2], [6.8, -7.5, Math.PI / 2]]) glass.push(new THREE.BoxGeometry(1.4, 2.4, 0.2).rotateY(ry).translate(x, 18, z).applyMatrix4(cm));
+  }
+
+  // ----- Le quai : une place pavée de part et d'autre de la piste (droite ici), jusqu'au mur qui tombe dans le port -----
+  if (track.village && track.village.plaza != null) {
+    const f = track.sample(track.village.plaza + 1), HALF = 40, LEN = track.length - track.village.plaza + 18;
+    const pavers = canvasTex(512, 512, (ctx, w, h) => {
+      const r = rng(23);
+      ctx.fillStyle = '#4a4640'; ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const v = 118 + r() * 42;
+        ctx.fillStyle = `rgb(${v},${v * 0.95},${v * 0.88})`;
+        ctx.fillRect(x * 64 + (y % 2) * 32 + 2, y * 64 + 2, 60, 60);
+        if (y % 2 && x === 7) ctx.fillRect(2 - 32, y * 64 + 2, 60, 60);
+      }
+    }, true);
+    const paving = new THREE.MeshStandardMaterial({ map: pavers, roughness: 0.95 });
+    for (const side of [-1, 1]) {
+      const pos = [], uv = [], idx = [], nu = 22, nt = Math.ceil(LEN / 2);
+      for (let i = 0; i <= nt; i++) for (let j = 0; j <= nu; j++) {
+        const t = (i / nt) * LEN, u = side * (4.2 + (j / nu) * (HALF - 4.2));
+        const x = f.x + f.tx * t + f.rx * u, z = f.z + f.tz * t + f.rz * u;
+        pos.push(x, track.groundY(x, z) + 0.1, z);
+        uv.push(u / 2.4, t / 2.4);
+      }
+      for (let i = 0; i < nt; i++) for (let j = 0; j < nu; j++) {
+        const a = i * (nu + 1) + j, b = a + 1, c = a + nu + 1, d = c + 1;
+        if (side > 0) idx.push(a, b, c, b, d, c); else idx.push(a, c, b, b, c, d);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, paving);
+      m.receiveShadow = true;
+      group.add(m);
+    }
+    // Le bout du quai : la bande sous la fin de la piste, et le mur de pierre, jusqu'à l'eau.
+    const yEnd = track.groundY(f.x + f.tx * LEN, f.z + f.tz * LEN) + 0.1, yaw = Math.atan2(-f.tx, -f.tz);
+    const seaLevel = track.map.env.sea ? track.map.env.sea.level : yEnd - 6;
+    stones.push(new THREE.BoxGeometry(HALF * 2, yEnd - seaLevel + 2, 1.2).translate(0, -(yEnd - seaLevel + 2) / 2, 0).rotateY(yaw).translate(f.x + f.tx * LEN, yEnd, f.z + f.tz * LEN));
+  }
+
+  // ----- Le port : des barques sur l'eau, au large du quai -----
+  const sea = track.map.env.sea;
+  if (sea) {
+    const hullCols = ['#f2f2ee', '#2b6cb0', '#c0392b', '#2fa36b', '#f1c40f'].map((c) => new THREE.MeshStandardMaterial({ color: lin(c), roughness: 0.6 }));
+    const fl = track.sample(track.length - 1);
+    for (let k = 0; k < 14; k++) {
+      const x = fl.x + (rand() - 0.5) * 140, z = fl.z - 50 - rand() * 110;
+      if (track.groundY(x, z) > sea.level - 0.5) continue;
+      const bm = new THREE.Matrix4().compose(new THREE.Vector3(x, sea.level, z), new THREE.Quaternion().setFromAxisAngle(up, rand() * 6), one);
+      const L = 5 + rand() * 4;
+      const hull = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.6, L, 8, 1).rotateX(Math.PI / 2).scale(1, 0.55, 1).translate(0, 0.1, 0).applyMatrix4(bm), hullCols[k % hullCols.length]);
+      hull.castShadow = true;
+      group.add(hull);
+      if (k % 2) group.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 1.6).translate(0, 0.9, -0.5).applyMatrix4(bm), hullCols[0]));
+    }
+  }
+
+  // (la pierre : ses coordonnées de texture en mètres, d'après la position, pour qu'elle ne soit pas étirée sur une
+  // marche de 5 m de large)
+  const worldUV = (g, size) => {
+    g = g.index ? g.toNonIndexed() : g;
+    const p = g.attributes.position, nrm = g.attributes.normal, uv = g.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i));
+      if (ny > 0.6) uv.setXY(i, x / size, z / size);
+      else uv.setXY(i, (nx > 0.7 ? z : x) / size, y / size);
+    }
+    return g;
+  };
+  for (let i = 0; i < stones.length; i++) stones[i] = worldUV(stones[i], 1.6);
+  walls.forEach((g, i) => { if (g.length) group.add(solid(g, wallMats[i])); });
+  shuts.forEach((g, i) => { if (g.length) group.add(solid(g, shutMats[i])); });
+  muralGeos.forEach((g, i) => { if (g.length) { const mm = new THREE.Mesh(mergeGeometries(g), murals[i]); mm.receiveShadow = true; group.add(mm); } });
+  for (const [g, mat] of [[trims, trimMat], [roofs, roofMat], [glass, glassMat], [irons, ironMat], [doors, doorMat], [stones, stoneMat], [tyres, ironMat], [lamps, lampMat]]) {
+    if (g.length) group.add(solid(g.map((x) => (x.index ? x.toNonIndexed() : x)), mat));
+  }
+  carGeos.forEach((g, i) => { if (g.length) group.add(solid(g.map((x) => (x.index ? x.toNonIndexed() : x)), carCols[i])); });
 }

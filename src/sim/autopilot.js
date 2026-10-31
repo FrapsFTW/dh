@@ -82,6 +82,9 @@ export function autopilot(sim, opts = {}) {
   const inRoots = track.roots.some((r) => r.s > race.s - 2 && r.s < race.s + 20);
   const rough = inRocks || inRoots;
   if (inRocks) vmax = Math.min(vmax, 9 * rp);
+  // Dans un escalier qui a sa vitesse (f.speed), il la garde sur toute la volée : on y prend vite de l'élan.
+  const stairs = track.features.find((f) => f.type === 'stairs' && f.speed && race.s > f.a - 2 && race.s < f.b);
+  if (stairs) vmax = Math.min(vmax, stairs.speed * rp);
   const rootV = 9 * Math.min(pace, 1) * (1 + (boost - 1) * (opts.rootBoost ?? 0));
   if (inRoots) vmax = Math.min(vmax, rootV);
   // Les prochaines racines : un rival, plus lancé, freine à temps pour y arriver à la bonne vitesse.

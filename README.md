@@ -41,7 +41,7 @@ A pour choisir, B pour revenir, LB / RB pour passer d'une rubrique à l'autre.
 | Changer de piste | dans le menu | |
 | Réglages de la physique · pilote auto | | G · P |
 
-Paramètres d'adresse utiles : `?carte=alpes` (La Grande Combe), `?carte=foret`, `avalanche`, `bikepark` ou `single`, `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
+Paramètres d'adresse utiles : `?carte=alpes` (La Grande Combe), `?carte=foret`, `avalanche`, `bikepark`, `single` ou `ville`, `?mode=normal` ou `?mode=ultra`, `?autopilot` (démo), `?autopilot&figure=backflip` (ou `360`, `frontflip` : le
 pilote auto tente la figure au saut d'arrivée), `?cam=chase` (vue extérieure), `?seed=12` (une autre forêt),
 `?qualite=basse` (ombres, antialiasing, forêt et plantes allégés, pour les petites cartes graphiques ; c'est aussi le choix « Légers » du menu, retenu), `?depart=600&vitesse=13`
 (lancé à 600 m de la cabane). La résolution s'adapte aussi
@@ -229,6 +229,10 @@ Une piste aussi longue que L'Avalanche n'a de relief détaillé (avec sa physiqu
 autour d'elle ; au-delà, le relief lointain. Le glacier, la remontée, le gué, les marches et le village sont des
 modules de la carte (`src/sim/maps.js`), comme les sauts. Les passages étroits aussi (`narrow`) : la rubalise se
 resserre à moins de 3 m, la trace à 1,5 m, et les bords se garnissent de troncs ou de blocs, de vrais obstacles.
+
+### Les Ruelles
+
+Environ 600 m et 1 min 10 dans une vieille ville peinte, de l'église au quai du port : la rue haute, le grand escalier, le gap de la ruelle, le mur de la chapelle, l'escalier des lavandières, le passage voûté, le saut du port. Les marches sont de vraies marches (une tous les 70 cm), en pierre ; les maisons sont des obstacles, à un mètre derrière la rubalise. Le tracé est dans `src/sim/maps.js`, le décor dans `ville()`, `src/render/scenery.js`.
 
 ## La physique
 

@@ -14,6 +14,8 @@ const VIEWS = {
   // (en l'air au-dessus du Big One, vélo couché)
   bikepark: { query: 'depart=1060&vitesse=12&mode=normal&figure=whip', frames: 0, until: "g.sim.race.s > g.sim.track.features.find((f) => f.name === 'le Big One').lipS + 5" },
   single: { query: 'depart=420&vitesse=6', frames: 30 },
+  // (dans le grand escalier, entre les maisons peintes)
+  ville: { query: 'depart=150&vitesse=5', frames: 40 },
 };
 
 const exe = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p));

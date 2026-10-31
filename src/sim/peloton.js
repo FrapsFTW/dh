@@ -6,7 +6,7 @@
 
 import { autopilot } from './autopilot.js';
 import { STEP } from './world.js';
-import { rng } from './noise.js';
+import { rng, smoothstep } from './noise.js';
 
 /**
  * Les rivaux. pace : attaque en virage (1 = le pilote auto des tests) ; line : leur côté préféré de la piste (m) ;
@@ -103,8 +103,11 @@ export function lineFor(track, rider, seed, gridU = 0) {
       u = u * (1 - w) + w * (gridU * 0.9 + 2.5 * Math.sin(s / w1 + p1));
       u = Math.max(-(tape - 2), Math.min(tape - 2, u));
     }
-    // Dans un passage étroit, chacun reste entre les rubalises.
-    const lim = Math.max(0.2, tape - 0.9);
+    // Dans un passage étroit, chacun reste entre les rubalises (et, dans un virage serré, vise plus près du milieu : la
+    // poursuite coupe le virage vers l'intérieur).
+    let kk = 0;
+    for (let d = -4; d <= 8; d += 4) kk = Math.max(kk, Math.abs(track.sample(s + d).k));
+    const lim = Math.max(0.2, tape - 0.9 - 0.6 * smoothstep(0.03, 0.08, kk));
     return Math.max(-lim, Math.min(lim, u));
   };
 }

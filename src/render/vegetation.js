@@ -456,6 +456,8 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     if (snowZones.length && track.trailDist(x, z) < 110 && snowZones.some((zz) => { const ss = track.trailS(x, z); return ss > zz.a - 20 && ss < zz.b + 20; })) return true;
     if (track.groundY(x, z) > snowline - 40) return true;
     if (track.village && Number.isFinite(near.dist) && near.s > track.village.a - 4 && near.s < track.village.b && near.dist < 5) return true;
+    // (une place pavée : rien ne pousse, jusqu'au bout du quai)
+    if (track.village && track.village.plaza != null && track.trailDist(x, z) < 45 && track.trailS(x, z) > track.village.plaza) return true;
     return track.buildings.length > 0 && nearHouse(x, z, 1);
   };
   // Une piste plus longue a plus de sous-bois (la même densité le long de la piste).
@@ -569,6 +571,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     const near = track.nearest(x, z, null, 0, 3);
     if (near.inside && near.dist < Math.max(track.trailHalfAt(near.s) + 1.2, track.tapeAt(near.s) + 0.3)) continue;
     if (track.buildings.length && nearHouse(x, z, 2)) continue;
+    if (track.map.scenery === 'ville' && track.trailDist(x, z) < 45) continue; // (pas de rochers dans les rues ni sur le quai)
     if (track.band !== null && Number.isFinite(near.dist) && near.dist < track.tapeAt(near.s) + 1.5) continue; // (le couloir du glacier)
     if (snowZones.length && track.trailDist(x, z) < 110 && snowZones.some((zz) => { const ss = track.trailS(x, z); return ss > zz.a - 20 && ss < zz.b + 10; })) continue; // (pas de cailloux sur la neige)
     if (track.treeNear(x, z, 0.6)) continue;

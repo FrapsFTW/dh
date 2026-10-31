@@ -368,11 +368,13 @@ export function createTrack(seed = 7, mapId = 'foret') {
 
   // Le sol de la piste par tronçons : dalles et ponts sur toute la largeur, graviers en altitude…
   const zones = [
+    // (un module peut avoir son sol : les marches de pierre d'une ville)
+    ...features.filter((f) => f.surface).map((f) => ({ a: f.a, b: f.b, surface: SURFACES[f.surface], whole: true })),
     ...bridges.map((f) => ({ a: f.a, b: f.b, surface: SURFACES.bois, whole: true })),
     ...features.filter((f) => f.wood).flatMap((f) => f.wood.map(([a, b]) => ({ a, b, surface: SURFACES.bois, whole: true }))),
     ...featureOf('slab').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.roche, whole: true })),
     // (la lèvre d'un drop sans autre habillage : une dalle de granit)
-    ...featureOf('jump').filter((f) => f.kind === 'drop' && !f.look).map((f) => ({ a: f.a + 0.5, b: f.lipS + 0.4, surface: SURFACES.roche, whole: true })),
+    ...featureOf('jump').filter((f) => f.kind === 'drop' && (!f.look || f.look === 'muret')).map((f) => ({ a: f.a + 0.5, b: f.lipS + 0.4, surface: SURFACES.roche, whole: true })),
     ...featureOf('ford').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.eau, whole: true })),
     ...featureOf('road').map((f) => ({ a: f.a, b: f.b, surface: SURFACES.gravier, whole: true })),
     ...(layout.surfaces || []).map((z) => ({ a: z.a, b: z.b, surface: SURFACES[z.surface], edge: z.edge && SURFACES[z.edge], off: z.off && SURFACES[z.off] })),
@@ -494,33 +496,68 @@ export function createTrack(seed = 7, mapId = 'foret') {
   };
 
   // ---------- Le village : des maisons de pierre de part et d'autre de la ruelle ----------
+  // (une ville, village.gap : les façades à gap[0] + gap[1]·hasard mètres de la rubalise, sur village.rows rangées,
+  // sauf sur les tronçons village.skip ; un village de montagne : à 5,2 à 7 m de l'axe, une rangée)
   const buildings = [];
   if (layout.village) {
     const V = layout.village;
-    for (const side of [-1, 1]) {
-      for (let s = V.a + rand() * 3; s < V.b; ) {
-        const w = 6 + rand() * 4, d = 7 + rand() * 2.5, h = 5.2 + rand() * 3, set = 5.2 + rand() * 1.8;
-        const sc = s + w / 2;
-        // Pas sur la place de l'arrivée (seulement autour, plus loin), ni trop près de la ruelle dans un virage.
-        const onSquare = sc > arena.a + 6;
-        const u0 = onSquare ? 15 + rand() * 4 : set;
-        const f = sample(sc);
-        const cx = f.x + side * (u0 + d / 2) * f.rx, cz = f.z + side * (u0 + d / 2) * f.rz;
-        const yaw = Math.atan2(-f.tx, -f.tz);
-        // Les coins ne doivent pas toucher la piste.
-        let ok = true, ymin = Infinity;
-        for (const [a, b] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]]) {
-          const x = cx + a * f.tx + b * side * f.rx, z = cz + a * f.tz + b * side * f.rz;
-          const q = nearest(x, z, sc, 40);
-          if (q.dist < TAPE_U + 1.2) ok = false;
-          ymin = Math.min(ymin, natural(x, z) + D[Math.floor(q.s / DS)] * (1 - smoothstep(4, 26, q.dist)));
+    // (ni sur les rues qu'on saute, look 'rue' : elles traversent la ville, il faut les laisser libres)
+    const streets = features.filter((f) => f.type === 'jump' && f.look === 'rue').map((f) => [f.lipS - 0.5, f.lipS + f.knuckle + 0.5]);
+    const skipped = (s, w = 0) => (V.skip || []).some(([a, b]) => s > a && s < b) || streets.some(([a, b]) => s + w / 2 > a && s - w / 2 < b);
+    // (la chaussée de ces rues, 31 m de part et d'autre : aucune maison dessus, de quelque rue qu'elle soit)
+    const onStreet = (x, z) => features.some((f) => {
+      if (f.type !== 'jump' || f.look !== 'rue') return false;
+      const c = sample(f.lipS + f.knuckle / 2), dx = x - c.x, dz = z - c.z;
+      return Math.abs(dx * c.tx + dz * c.tz) < f.knuckle / 2 + 0.5 && Math.abs(dx * c.rx + dz * c.rz) < 31;
+    });
+    const overlaps = (x, z, r) => buildings.some((b) => Math.hypot(x - b.x, z - b.z) < (r + Math.min(b.w, b.d) / 2) * 0.9);
+    for (let row = 0; row < (V.rows || 1); row++) {
+      for (const side of [-1, 1]) {
+        for (let s = V.a + rand() * 3; s < V.b; ) {
+          // (un village de montagne garde exactement ses tirages d'avant : la forêt qui suit en dépend)
+          const w = 6 + rand() * 4, d = 7 + rand() * 2.5, h = 5.2 + rand() * 3;
+          const sc = s + w / 2;
+          let u0;
+          if (V.gap) {
+            s += w + 0.2 + rand() * 1.2;
+            if (skipped(sc, w + 1)) continue;
+            u0 = tapeAt(sc) + V.gap[0] + rand() * V.gap[1];
+            // (la deuxième rangée, derrière la première, de l'autre côté d'une venelle de 3 à 5 m)
+            if (row) u0 += 12.5 + rand() * 2;
+          } else u0 = 5.2 + rand() * 1.8;
+          // Pas sur la place de l'arrivée (seulement autour, plus loin), ni trop près de la ruelle dans un virage.
+          if (sc > arena.a + 6) u0 = 15 + rand() * 4;
+          const f = sample(sc);
+          const cx = f.x + side * (u0 + d / 2) * f.rx, cz = f.z + side * (u0 + d / 2) * f.rz;
+          const yaw = Math.atan2(-f.tx, -f.tz);
+          if (V.gap && overlaps(cx, cz, Math.min(w, d) / 2)) continue;
+          // Les coins ne doivent pas toucher la piste (en ville, nulle part : dans un lacet, l'autre rue est tout près).
+          let ok = true, ymin = Infinity;
+          for (const [a, b] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2], ...(V.gap ? [[0, -d / 2], [0, d / 2]] : [])]) {
+            const x = cx + a * f.tx + b * side * f.rx, z = cz + a * f.tz + b * side * f.rz;
+            const q = nearest(x, z, sc, 40);
+            if (V.gap) {
+              const g = nearest(x, z, null, 0, 4), m = V.gap[0] - 0.1;
+              if (onStreet(x, z) || onStreet(cx, cz)) ok = false;
+              if (q.dist < tapeAt(q.s) + m || g.dist < tapeAt(g.s) + m) ok = false;
+            } else if (q.dist < TAPE_U + 1.2) ok = false;
+            ymin = Math.min(ymin, natural(x, z) + D[Math.floor(q.s / DS)] * (1 - smoothstep(4, 26, q.dist)));
+          }
+          if (ok && rand() > (V.gap ? 0.04 : 0.12)) buildings.push({ x: cx, z: cz, y: ymin - 0.6, w, d, h: h + 0.6, yaw, side, roof: rand(), hue: rand(), row });
+          if (!V.gap) s += w + 0.6 + rand() * 3.5;
         }
-        if (ok && rand() > 0.12) buildings.push({ x: cx, z: cz, y: ymin - 0.6, w, d, h: h + 0.6, yaw, side, roof: rand(), hue: rand() });
-        s += w + 0.6 + rand() * 3.5;
       }
     }
   }
   const nearBuilding = (x, z, m) => buildings.some((b) => Math.hypot(x - b.x, z - b.z) < Math.max(b.w, b.d) / 2 + m);
+  /** Le point (x, z) est-il dans une maison (agrandie de m mètres) ? Au rectangle près, pas au cercle. */
+  function insideBuilding(x, z, m = 0) {
+    for (const b of buildings) {
+      const dx = x - b.x, dz = z - b.z, c = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+      if (Math.abs(dx * c - dz * sn) < b.d / 2 + m && Math.abs(dx * sn + dz * c) < b.w / 2 + m) return true;
+    }
+    return false;
+  }
 
   const trees = [];
   // Une carte peut choisir ses essences (kind), leur densité (density) et leur hauteur (height) : voir maps.js.
@@ -714,7 +751,7 @@ export function createTrack(seed = 7, mapId = 'foret') {
     seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null, peloton: map.peloton || null, lift: map.lift || null, scenery: map.scenery || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
     natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight, tapeAt, trailHalfAt, narrowAt, narrows, vmaxAt, trailDist, trailS, band,
     features, roots, rocks, bridges, onBridge, gates, respawns, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
-    bounds, trees, treeNear, boulders, buildings, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
+    bounds, trees, treeNear, boulders, buildings, insideBuilding, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
   };
 }
 

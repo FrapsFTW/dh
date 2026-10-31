@@ -325,7 +325,7 @@ export function createGround(sim, tex, { low = false } = {}) {
   const rForest = new Float32Array(nR), rTrail = new Float32Array(nR * 3), rRocky = new Float32Array(nR), rSlab = new Float32Array(nR);
   // (les dalles, et la lèvre de granit d'un drop sans autre habillage)
   const rocks = track.features.filter((f) => f.type === 'rocks');
-  const slabs = [...track.features.filter((f) => f.type === 'slab'), ...track.features.filter((f) => f.type === 'jump' && f.kind === 'drop' && !f.look).map((f) => ({ a: f.a + 0.5, b: f.lipS + 0.4 }))];
+  const slabs = [...track.features.filter((f) => f.type === 'slab'), ...track.features.filter((f) => f.type === 'jump' && f.kind === 'drop' && (!f.look || f.look === 'muret')).map((f) => ({ a: f.a + 0.5, b: f.lipS + 0.4 }))];
   const jumps = track.features.filter((f) => f.type === 'jump'), rEarth = new Float32Array(nR);
   for (let i = 0; i < nR; i++) {
     const x = ribbon.positions[i * 3], z = ribbon.positions[i * 3 + 2];

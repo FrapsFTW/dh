@@ -4,10 +4,10 @@
 // Un pilote, c'est un identifiant tiré au hasard par son navigateur (jamais renvoyé aux autres : il sert de clé).
 // Le serveur ne rejoue pas la manche : il refuse seulement les temps impossibles, plus rapides que FLOOR.
 
-export const MAPS = ['foret', 'alpes', 'avalanche', 'bikepark', 'single'];
+export const MAPS = ['foret', 'alpes', 'avalanche', 'bikepark', 'single', 'ville'];
 export const MODES = ['normal', 'ultra'];
 /** Le temps le plus court accepté (s) : environ 60 % du meilleur pilote automatique sur la piste. */
-export const FLOOR = { foret: 40, alpes: 108, avalanche: 210, bikepark: 54, single: 32 };
+export const FLOOR = { foret: 40, alpes: 108, avalanche: 210, bikepark: 54, single: 32, ville: 35 };
 export const CEIL = 1800;
 /** Les pilotes gardés par tableau (les plus lents sortent) et ceux qu'on montre. */
 export const KEEP = 1000;

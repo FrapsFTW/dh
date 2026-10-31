@@ -393,9 +393,10 @@ test('le whip : posé encore couché, on tombe en Ultra-réaliste ; en Normal, l
 
 // ---------- Les nouvelles pistes : Le Bike Park, Le Single ----------
 
-for (const map of ['bikepark', 'single']) {
+const MAP_NAMES = { bikepark: 'Le Bike Park', single: 'Le Single', ville: 'Les Ruelles' };
+for (const map of ['bikepark', 'single', 'ville']) {
   for (const mode of ['ultra', 'normal']) {
-    test(`${map === 'bikepark' ? 'Le Bike Park' : 'Le Single'}, mode ${mode === 'ultra' ? 'Ultra-réaliste' : 'Normal'} : le pilote automatique descend toute la piste sans tomber ni sortir`, { timeout: 600000 }, () => {
+    test(`${MAP_NAMES[map]}, mode ${mode === 'ultra' ? 'Ultra-réaliste' : 'Normal'} : le pilote automatique descend toute la piste sans tomber ni sortir`, { timeout: 600000 }, () => {
       const sim = createSim({ map, mode });
       let t = 0, outs = 0;
       while (sim.race.state !== 'arrivee' && t < 300) {
@@ -600,3 +601,49 @@ for (const mode of ['ultra', 'normal']) {
     console.log(`  pilote auto, L'Avalanche, ${mode} : ${sim.race.time.toFixed(1)} s`);
   });
 }
+
+// ---------- Les Ruelles ----------
+
+test('Les Ruelles : des pavés, des escaliers de vraies marches en pierre, des ruelles étroites', () => {
+  const t = tracks.ville, y = (s) => t.trailY(s, 0);
+  const at = (s) => { const f = t.sample(s); return t.surfaceAt(f.x, f.z).name; };
+  assert.equal(at(t.sStart + 20), 'pavés');
+  const stairs = t.features.filter((f) => f.type === 'stairs');
+  assert.ok(stairs.length >= 3, `${stairs.length} volées de marches`);
+  for (const f of stairs) {
+    assert.equal(at((f.a + f.b) / 2), 'roche');
+    // Chaque marche : un palier, puis une contremarche de 15 à 35 cm.
+    for (let s = f.a + f.step; s < f.b - 0.01; s += f.step) {
+      const rise = y(s - 0.1) - y(s + 0.1);
+      assert.ok(rise > 0.15 && rise < 0.35, `${f.name}, marche à ${s.toFixed(0)} m : ${rise.toFixed(2)} m`);
+    }
+  }
+  // Entre les façades : moins de 4 m de large sur la plus grande partie de la descente.
+  let narrow = 0, n = 0;
+  for (let s = t.sStart; s < t.sFinish; s += 1) { n++; if (t.tapeAt(s) * 2 < 4) narrow++; }
+  assert.ok(narrow / n > 0.6, `étroit sur ${((narrow / n) * 100).toFixed(0)} % seulement`);
+});
+
+test("Les Ruelles : des maisons tout le long, jamais dans le balisage ni sur les rues qu'on saute", () => {
+  const t = tracks.ville;
+  assert.ok(t.buildings.length > 100, `${t.buildings.length} maisons`);
+  const streets = t.features.filter((f) => f.type === 'jump' && f.look === 'rue');
+  assert.equal(streets.length, 2);
+  for (const b of t.buildings) {
+    const c = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+    for (const [a, d] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [-1, 0], [1, 0]]) {
+      const lx = (a * b.d) / 2, lz = (d * b.w) / 2;
+      const x = b.x + lx * c + lz * sn, z = b.z - lx * sn + lz * c;
+      const p = t.nearest(x, z, null, 0, 4);
+      assert.ok(p.dist > t.tapeAt(p.s) + 0.5, `une maison à ${(p.dist - t.tapeAt(p.s)).toFixed(2)} m de la rubalise, à ${p.s.toFixed(0)} m`);
+      assert.ok(!t.insideBuilding(t.sample(p.s).x, t.sample(p.s).z), 'une maison sur la piste');
+    }
+  }
+  // Rien sur la rue, sous les sauts : on voit la route d'un bout à l'autre.
+  for (const f of streets) {
+    const fr = t.sample(f.lipS + f.knuckle / 2);
+    for (let u = -25; u <= 25; u += 1) assert.ok(!t.insideBuilding(fr.x + fr.rx * u, fr.z + fr.rz * u), `${f.name} : une maison sur la rue, à ${u} m`);
+  }
+  // Une maison est un obstacle : on s'y arrête, comme contre un tronc.
+  assert.ok(t.insideBuilding(t.buildings[0].x, t.buildings[0].z));
+});

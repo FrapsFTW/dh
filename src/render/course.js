@@ -777,7 +777,7 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
     for (let k = 0; k < (f.crowd || (track.map.env.spotCrowd ?? 26)); k++) {
       const s = s0 + rand() * (s1 - s0), side = rand() < 0.5 ? -1 : 1;
       const pf = frameAt(track, s, side * (track.tapeAt(s) + 1.2 + rand() * 3.5));
-      if (track.treeNear(pf.pos.x, pf.pos.z, 0.5)) continue;
+      if (track.treeNear(pf.pos.x, pf.pos.z, 0.5) || track.insideBuilding(pf.pos.x, pf.pos.z, 0.3)) continue;
       addPerson(pf.pos, frameAt(track, s).pos, true);
     }
   }
@@ -903,7 +903,7 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
   }
 
   // ---------- Le village : maisons de pierre ou crépies, toits de lauze, volets, fontaine sur la place ----------
-  if (track.buildings.length) {
+  if (track.buildings.length && track.map.scenery !== 'ville') {
     // Des photos (Poly Haven, CC0 ; voir groundLayers.js) : la couleur et le relief. Les coordonnées de texture des murs
     // comptent un tour tous les 3 m, celles des toits tous les 1,5 m : on répète chaque photo à sa taille réelle.
     const loader = new THREE.TextureLoader();
@@ -985,6 +985,18 @@ normal = normalize(normal + vec3(dh_noise(rp) - 0.5, 0.0, dh_noise(rp + 7.0) - 0
       const s = V.a + rand() * (track.sFinish - 60 - V.a), side = rand() < 0.5 ? -1 : 1;
       const pf = frameAt(track, s, side * (track.tapeAt(s) + 0.9 + rand() * 1.2));
       if (track.buildings.some((b) => Math.hypot(pf.pos.x - b.x, pf.pos.z - b.z) < Math.max(b.w, b.d) / 2 + 0.6)) continue;
+      addPerson(pf.pos, frameAt(track, s).pos);
+    }
+  }
+  // Les Ruelles (leurs maisons sont dans scenery.js) : le public sur les trottoirs, adossé aux façades, et serré dans
+  // les escaliers.
+  if (track.map.scenery === 'ville') {
+    const stairs = track.features.filter((f) => f.type === 'stairs');
+    for (let k = 0; k < 420; k++) {
+      const s = track.sStart + 12 + rand() * (track.sFinish - 50 - track.sStart), side = rand() < 0.5 ? -1 : 1;
+      if (!stairs.some((f) => s > f.a && s < f.b) && rand() < 0.45) continue;
+      const pf = frameAt(track, s, side * (track.tapeAt(s) + 0.45 + rand() * 0.6));
+      if (track.insideBuilding(pf.pos.x, pf.pos.z, 0.3)) continue;
       addPerson(pf.pos, frameAt(track, s).pos);
     }
   }
