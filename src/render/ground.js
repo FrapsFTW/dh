@@ -330,8 +330,8 @@ export function createGround(sim, tex, { low = false } = {}) {
   for (let i = 0; i < nR; i++) {
     const x = ribbon.positions[i * 3], z = ribbon.positions[i * 3 + 2];
     const u = ribbon.uv[i * 2], s = ribbon.uv[i * 2 + 1];
-    rForest[i] = forestAt(x, z);
-    rTrail[i * 3] = u; rTrail[i * 3 + 1] = s; rTrail[i * 3 + 2] = track.trailHalfAt(s);
+    rForest[i] = track.street ? 0 : forestAt(x, z);
+    rTrail[i * 3] = u; rTrail[i * 3 + 1] = s; rTrail[i * 3 + 2] = track.street ? 6 : track.trailHalfAt(s); // (une rue est pavée d'un mur à l'autre)
     for (const f of rocks) rRocky[i] = Math.max(rRocky[i], smoothstep(f.a - 1, f.a + 2, s) * (1 - smoothstep(f.b - 2, f.b + 1, s)));
     for (const f of slabs) rSlab[i] = Math.max(rSlab[i], smoothstep(f.a - 1, f.a + 1, s) * (1 - smoothstep(f.b - 1, f.b + 1, s)));
     for (const f of jumps) rEarth[i] = Math.max(rEarth[i], smoothstep(f.a - 2, f.a, s) * (1 - smoothstep(f.b - 4, f.b, s)));

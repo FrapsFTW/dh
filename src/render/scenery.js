@@ -594,8 +594,8 @@ function ville(track, group) {
   for (const f of track.features.filter((f) => f.type === 'stairs')) {
     for (let s0 = f.a; s0 < f.b - 0.01; s0 += f.step) {
       const s1 = Math.min(f.b, s0 + f.step), fr = frameAt(track, (s0 + s1) / 2), half = track.tapeAt(s0) + 1.1;
-      // (le dessus juste au-dessus du sol de la piste, sur toute la largeur : la trace est un peu creusée au milieu)
-      const top = Math.max(...[-2, -1, 0, 1, 2].map((u) => track.trailY(s0 + 0.05, u))) + 0.02;
+      // (le dessus juste au-dessus du sol de la piste : une marche est un palier, plat d'un mur à l'autre)
+      const top = track.trailY(s0 + 0.05, 0) + 0.012;
       stones.push(new THREE.BoxGeometry(half * 2, 0.7, s1 - s0 + 0.04).translate(0, -0.35, 0).rotateY(fr.yaw).translate(fr.pos.x, top, fr.pos.z));
       // le nez de la marche, en pierre claire : on voit où elle tombe
       const nose = frameAt(track, s1 - 0.09);
@@ -611,6 +611,124 @@ function ville(track, group) {
         if (prev) irons.push(rail(prev, head));
         prev = head;
       }
+    }
+  }
+
+  // ----- La rue : le caniveau au milieu, les bordures et les trottoirs, les murs entre les maisons -----
+  const palletWood = [], deckBoards = [], deckUnder = [], gutter = [];
+  // Une bande qui suit le sol, de u0 à u1 (fonctions de s), de sA à sB. keep(s) : là où elle existe.
+  const strip = (arr, sA, sB, u0, u1, dy, keep, ds = 1) => {
+    const pos = [], uv = [], idx = [];
+    let k = -1;
+    for (let s = sA; s <= sB; s += ds) {
+      if (!keep(s)) { k = -1; continue; }
+      const f = track.sample(s);
+      const ua = u0(s), ub = u1(s), base = pos.length / 3;
+      pos.push(f.x + ua * f.rx, track.trailY(s, ua) + dy, f.z + ua * f.rz, f.x + ub * f.rx, track.trailY(s, ub) + dy, f.z + ub * f.rz);
+      uv.push(0, s, 1, s);
+      if (k >= 0) idx.push(k, k + 1, base, k + 1, base + 1, base);
+      k = base;
+    }
+    if (!idx.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    // (une bande peut tourner dans les deux sens : on garde ses faces vers le haut)
+    if (g.attributes.normal.getY(0) < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 1]; ix[i + 1] = t; } g.computeVertexNormals(); }
+    arr.push(g.toNonIndexed());
+  };
+  if (track.street) {
+    const { a, b } = track.street, onStairs = (s) => track.features.some((f) => f.type === 'stairs' && s > f.a - 0.3 && s < f.b + 0.3);
+    const overGap = (s) => track.features.some((f) => f.type === 'jump' && f.look === 'rue' && s > f.lipS - 1 && s < f.lipS + f.knuckle + 1);
+    const panel = (s, side) => track.wallrides.some((w) => w.side === side && s > w.a - 1 && s < w.b + 1);
+    const flat = (s) => !onStairs(s) && !overGap(s);
+    strip(gutter, a, track.length - 25, () => -0.16, () => 0.16, 0.012, flat, 0.5);
+    for (const side of [-1, 1]) {
+      const tape = (s) => track.tapeAt(s);
+      const keep = (s) => flat(s) && !panel(s, side);
+      strip(trims, a, b, (s) => side * (tape(s) + 0.05), (s) => side * (tape(s) + 0.3), 0.02, keep, 0.5);
+      strip(stones, a, b, (s) => side * (tape(s) + 0.3), (s) => side * (tape(s) + 1.0), 0.015, keep, 0.5);
+    }
+    for (const w of track.walls) {
+      const wm = new THREE.Matrix4().compose(new THREE.Vector3(w.x, w.y, w.z), new THREE.Quaternion().setFromAxisAngle(up, w.yaw), one);
+      stones.push(new THREE.BoxGeometry(0.4, w.h, w.len).translate(0, w.h / 2, 0).applyMatrix4(wm));
+      trims.push(new THREE.BoxGeometry(0.52, 0.1, w.len).translate(0, w.h + 0.05, 0).applyMatrix4(wm));
+    }
+  }
+
+  // ----- Les palettes : les murs qu'on roule, celles clouées aux murs, celles qui attendent en piles -----
+  // (debout contre un mur : local +x vers le mur ; à plat, en pile)
+  const palletUp = (m) => {
+    for (let i = 0; i < 6; i++) palletWood.push(new THREE.BoxGeometry(0.025, 0.11, 1.2).translate(-0.045, 0.08 + i * 0.17, 0).applyMatrix4(m));
+    for (const z of [-0.52, 0, 0.52]) palletWood.push(new THREE.BoxGeometry(0.08, 1.0, 0.1).translate(0, 0.5, z).applyMatrix4(m));
+  };
+  const palletFlat = (m) => {
+    for (let i = 0; i < 6; i++) palletWood.push(new THREE.BoxGeometry(1.2, 0.022, 0.11).translate(0, 0.13, -0.42 + i * 0.168).applyMatrix4(m));
+    for (const x of [-0.52, 0, 0.52]) palletWood.push(new THREE.BoxGeometry(0.1, 0.1, 0.96).translate(x, 0.06, 0).applyMatrix4(m));
+  };
+  const stackAt = (x, z, yaw, n) => {
+    const y = track.groundY(x, z);
+    for (let i = 0; i < n; i++) palletFlat(new THREE.Matrix4().compose(new THREE.Vector3(x + (rand() - 0.5) * 0.08, y + i * 0.145, z + (rand() - 0.5) * 0.08), new THREE.Quaternion().setFromAxisAngle(up, yaw + (rand() - 0.5) * 0.12), one));
+  };
+  for (const w of track.wallrides) {
+    // Le dessous sombre (par bandes : le mur est courbe), puis une planche tous les 18 cm : des palettes démontées.
+    for (let i = 0; i < 6; i++) {
+      const uA = w.u0 - 0.05 + ((w.top + 0.25 - w.u0) * i) / 6, uB = w.u0 - 0.05 + ((w.top + 0.25 - w.u0) * (i + 1)) / 6;
+      strip(deckUnder, w.a + 1, w.b - 1, () => w.side * uA, () => w.side * uB, 0.02, () => true, 0.5);
+    }
+    for (let s = w.a + 1; s < w.b - 1.2; s += 0.18) {
+      const u = (t) => (w.u0 - 0.05 + (w.top + 0.2 - w.u0 + 0.05) * t) * w.side;
+      const pos = [], idx = [], uv = [];
+      for (let i = 0; i <= 6; i++) {
+        const uu = u(i / 6);
+        for (const sx of [s, s + 0.13]) {
+          const f = track.sample(sx);
+          pos.push(f.x + uu * f.rx, track.trailY(sx, uu) + 0.045, f.z + uu * f.rz);
+          uv.push((i / 6) * 1.6, sx * 0.7);
+        }
+        if (i < 6) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      if (g.attributes.normal.getY(0) < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 1]; ix[i + 1] = t; } g.computeVertexNormals(); }
+      deckBoards.push(g.toNonIndexed());
+    }
+    // Au-dessus de la crête, des palettes clouées au mur, sur deux rangs.
+    for (let s = w.a + 2; s < w.b - 2; s += 1.28) {
+      const f = track.sample(s), yaw = Math.atan2(-f.tx, -f.tz);
+      for (let row = 0; row < 2; row++) {
+        if (rand() < 0.1) continue;
+        const u = w.side * 4.68;
+        const q = new THREE.Quaternion().setFromAxisAngle(up, yaw + (w.side < 0 ? Math.PI : 0));
+        palletUp(new THREE.Matrix4().compose(new THREE.Vector3(f.x + u * f.rx, f.c + w.H + 0.1 + row * 1.04, f.z + u * f.rz), q, one));
+      }
+    }
+    // Aux deux bouts, des piles de palettes.
+    for (const [s, n] of [[w.a - 1, 7], [w.b + 1, 9]]) {
+      const f = track.sample(s), u = w.side * (track.tapeAt(s) + 0.7);
+      stackAt(f.x + u * f.rx, f.z + u * f.rz, Math.atan2(-f.tx, -f.tz), n);
+    }
+  }
+  if (track.street) {
+    // En bas de la ville, des palettes contre les murs et en piles, jusque sur le quai.
+    const from = track.wallrides.length ? track.wallrides[0].a : track.street.b - 100;
+    for (const w of track.walls) {
+      if (w.palettes || w.s < from || rand() > 0.6) continue;
+      const f = track.sample(w.s), inward = 0.26;
+      const q = new THREE.Quaternion().setFromAxisAngle(up, w.yaw + (w.side < 0 ? Math.PI : 0));
+      palletUp(new THREE.Matrix4().compose(new THREE.Vector3(w.x - w.side * inward * f.rx, track.trailY(w.s, w.side * (track.tapeAt(w.s) + 0.7)) + 0.02, w.z - w.side * inward * f.rz), q, one));
+    }
+    const plaza = track.street.plaza;
+    for (let i = 0; i < 16; i++) {
+      const s = plaza + 2 + i * 3.6 + rand() * 2, side = i % 2 ? 1 : -1, f = track.sample(s);
+      const u = side * (track.tapeAt(s) + 1.2 + rand() * 2.5);
+      if (track.wallrides.some((w) => w.side === side && s > w.a - 2 && s < w.b + 2)) continue;
+      stackAt(f.x + u * f.rx, f.z + u * f.rz, rand() * 3, 2 + Math.floor(rand() * 7));
     }
   }
 
@@ -817,7 +935,10 @@ function ville(track, group) {
   walls.forEach((g, i) => { if (g.length) group.add(solid(g, wallMats[i])); });
   shuts.forEach((g, i) => { if (g.length) group.add(solid(g, shutMats[i])); });
   muralGeos.forEach((g, i) => { if (g.length) { const mm = new THREE.Mesh(mergeGeometries(g), murals[i]); mm.receiveShadow = true; group.add(mm); } });
-  for (const [g, mat] of [[trims, trimMat], [roofs, roofMat], [glass, glassMat], [irons, ironMat], [doors, doorMat], [stones, stoneMat], [tyres, ironMat], [lamps, lampMat]]) {
+  const palletMat = new THREE.MeshStandardMaterial({ ...photo('bois', 1), color: lin('#e6c79c'), roughness: 0.9 });
+  const underMat = new THREE.MeshStandardMaterial({ color: lin('#3a2a1c'), roughness: 1 });
+  const gutterMat = new THREE.MeshStandardMaterial({ color: lin('#c9c4b8'), roughness: 0.9 });
+  for (const [g, mat] of [[gutter, gutterMat], [palletWood, palletMat], [deckBoards, palletMat], [deckUnder, underMat], [trims, trimMat], [roofs, roofMat], [glass, glassMat], [irons, ironMat], [doors, doorMat], [stones, stoneMat], [tyres, ironMat], [lamps, lampMat]]) {
     if (g.length) group.add(solid(g.map((x) => (x.index ? x.toNonIndexed() : x)), mat));
   }
   carGeos.forEach((g, i) => { if (g.length) group.add(solid(g.map((x) => (x.index ? x.toNonIndexed() : x)), carCols[i])); });

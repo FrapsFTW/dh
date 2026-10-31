@@ -41,13 +41,21 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
     );
     treeHandles.add(c.handle);
   }
-  // Les maisons du village : comme un arbre, on s'y arrête net.
+  // Les maisons du village, les murs d'une ville : comme un arbre, on s'y arrête net.
+  const wallHandles = new Set();
+  for (const w of track.walls) {
+    const c = world.createCollider(
+      RAPIER.ColliderDesc.cuboid(0.2, w.h / 2, w.len / 2).setTranslation(w.x, w.y + w.h / 2, w.z)
+        .setRotation({ x: 0, y: Math.sin(w.yaw / 2), z: 0, w: Math.cos(w.yaw / 2) }).setCollisionGroups(GROUPS.trees),
+    );
+    wallHandles.add(c.handle);
+  }
   for (const b of track.buildings) {
     const c = world.createCollider(
       RAPIER.ColliderDesc.cuboid(b.d / 2, b.h / 2, b.w / 2).setTranslation(b.x, b.y + b.h / 2, b.z)
         .setRotation({ x: 0, y: Math.sin(b.yaw / 2), z: 0, w: Math.cos(b.yaw / 2) }).setCollisionGroups(GROUPS.trees),
     );
-    treeHandles.add(c.handle);
+    wallHandles.add(c.handle);
   }
   // Les blocs qui bordent les passages étroits : à moitié enterrés, durs comme un tronc.
   const rockHandles = new Set();
@@ -125,6 +133,7 @@ export function createSim({ seed = 7, mode = null, map = 'foret', params = mode 
         const other = h1 === rider ? h2 : h2 === rider ? h1 : null;
         if (other === null) return;
         if (treeHandles.has(other)) riderHit = 'arbre';
+        else if (wallHandles.has(other)) riderHit = 'mur';
         else if (rockHandles.has(other)) riderHit = 'rocher';
         else if (groundHandles.has(other)) riderHit = riderHit || 'sol';
       });

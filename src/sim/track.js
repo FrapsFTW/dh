@@ -108,11 +108,14 @@ export function createTrack(seed = 7, mapId = 'foret') {
   const rockRanges = featureOf('rocks');
   const inRocks = (s, margin = 0) => rockRanges.find((f) => s > f.a - margin && s < f.b + margin);
 
+  // Une ville (layout.street) : la chaussée plate d'un mur à l'autre, les trottoirs, les carrefours presque à plat.
+  const street = layout.street || null;
+  const wallrides = layout.wallrides || [];
   // Inclinaison des virages : relevés selon la courbure, sauf en dévers.
   const BANK = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const s = i * DS;
-    let b = clamp(K[i] * 7, -0.55, 0.55);
+    let b = street ? 0 : clamp(K[i] * 7, -0.55, 0.55);
     for (const f of features) {
       if (f.type !== 'offCamber') continue;
       const w = smoothstep(f.a, f.a + 6, s) * (1 - smoothstep(f.b - 6, f.b, s));
@@ -125,6 +128,17 @@ export function createTrack(seed = 7, mapId = 'foret') {
   let C = new Float32Array(n);
   for (let i = 0; i < n; i++) C[i] = natural(X[i], Z[i]);
   C = boxSmooth(boxSmooth(C, 36), 36);
+  // (un carrefour reste presque à plat : la pente se reprend dans les rues, de part et d'autre)
+  if (street) {
+    const C0 = C.slice(), RAMP = 16;
+    for (const [a, b] of street.landings) {
+      const y = C0[Math.round((a + b) / 2 / DS)];
+      for (let i = 0; i < n; i++) {
+        const s = i * DS, w = smoothstep(a - RAMP, a - 1, s) * (1 - smoothstep(b + 1, b + RAMP, s));
+        if (w > 0) C[i] += 0.75 * w * (y - C0[i]);
+      }
+    }
+  }
   const arena = featureOf('arena')[0];
   const iArena = Math.floor(arena.a / DS);
   for (let i = iArena; i < n; i++) {
@@ -314,7 +328,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
       else if (f.type === 'brakeBumps') h += 0.035 * Math.sin((2 * Math.PI * d) / 0.95) ** 2 * smoothstep(0, 3, d) * (1 - smoothstep(f.b - f.a - 2, f.b - f.a, d));
       else if (f.type === 'startRamp') h += f.height * (1 - smoothstep(f.b - 9, f.b, s));
       // Les marches : des paliers à plat (à la hauteur du début de chaque marche), une contremarche tous les f.step m.
-      else if (f.type === 'stairs') h += baseAt(f.a + f.step * Math.floor(d / f.step)) - baseAt(s);
+      // (f.even : un vrai escalier, toutes ses marches de la même hauteur)
+      else if (f.type === 'stairs') h += (f.even ? baseAt(f.a) + (baseAt(f.b) - baseAt(f.a)) * (Math.floor(d / f.step) * f.step) / (f.b - f.a) : baseAt(f.a + f.step * Math.floor(d / f.step))) - baseAt(s);
       // Le gué : la piste plonge dans le lit du torrent.
       else if (f.type === 'ford') h -= f.depth * Math.sin((Math.PI * d) / (f.b - f.a)) ** 2;
       // La passerelle North Shore : une rampe de planches, le tablier à f.raise m au-dessus du sol, une rampe pour en
@@ -323,7 +338,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
     }
     // Les modules s'effacent sur les côtés en pente douce, pour ne pas faire de mur si on passe au bord (sauf une
     // passerelle : son bord est franc, voir trailY).
-    h *= 1 - smoothstep(TRAIL_HALF + 0.2, TRAIL_HALF + 2.2, au);
+    // (en ville, ils vont d'un mur à l'autre)
+    h *= street ? 1 - smoothstep(street.flat - 0.2, street.flat + 0.6, au) : 1 - smoothstep(TRAIL_HALF + 0.2, TRAIL_HALF + 2.2, au);
     let bumps = 0;
     for (const r of roots) {
       const dd = s - r.s - r.skew * u;
@@ -344,10 +360,34 @@ export function createTrack(seed = 7, mapId = 'foret') {
     return h + bumps * (1 - smoothstep(TRAIL_HALF + 0.4, TRAIL_HALF + 1.2, au));
   }
 
+  /** La hauteur d'un mur de palettes en (s, u) : une courbe de plus en plus raide, jusqu'à sa crête. */
+  function wallrideAt(s, u) {
+    for (const w of wallrides) {
+      if (s <= w.a || s >= w.b) continue;
+      const x = (u * w.side - w.u0) / (w.top - w.u0);
+      if (x <= 0) return 0;
+      return w.H * Math.min(x, 1) ** 2 * smoothstep(w.a, w.a + w.ramp, s) * (1 - smoothstep(w.b - w.ramp, w.b, s));
+    }
+    return 0;
+  }
+  /** La bordure du trottoir, sauf sur les marches et sur la place de l'arrivée. */
+  function curbAt(s, au) {
+    const half = tapeAt(s) + 0.1;
+    if (au <= half) return 0;
+    let k = smoothstep(street.a, street.a + 4, s) * (1 - smoothstep(street.b - 4, street.b, s));
+    for (const f of features) if (f.type === 'stairs') k *= 1 - smoothstep(f.a - 2, f.a, s) * (1 - smoothstep(f.b, f.b + 2, s));
+    return street.curb * k * smoothstep(half, half + 0.4, au);
+  }
+
   /** Hauteur du sol de la piste au point (s, u) du tracé. */
   function trailY(s, u) {
     const f = sample(s);
     const au = Math.abs(u);
+    if (street) {
+      const wr = wallrideAt(s, u), yt = f.c + curbAt(s, au) + featureHeight(s, u) + wr;
+      const w = wr > 0 ? 0 : smoothstep(street.flat, street.flat + 0.8, au);
+      return w <= 0 ? yt : yt + (terrainHeight(f.x + u * f.rx, f.z + u * f.rz, f.d, au) + 0.02 - yt) * w;
+    }
     const uc = clamp(u, -2.8, 2.8);
     // Le profil en travers : légèrement creusé au milieu (la trace), relevé dans les virages.
     const rut = -0.05 * Math.exp(-((u / 1.1) ** 2));
@@ -419,6 +459,11 @@ export function createTrack(seed = 7, mapId = 'foret') {
     const p = nearest(x, z, null, 0, wides.length ? 4 : 1);
     const s = p.s;
     const th = trailHalfAt(s);
+    if (street && p.dist < tapeAt(s) + 3) {
+      if (wallrideAt(s, p.u) > 0.03) return SURFACES.bois;
+      // (toute la largeur de la rue : les marches, ou les pavés, jamais l'herbe)
+      if (!p.inside || p.dist > th + 0.9) { const z = zoneAt(s); return z && z.whole ? z.surface : SURFACES.paves; }
+    }
     if (!p.inside || p.dist > th + 0.9) {
       // À côté de la piste : l'herbe, ou ce qui couvre tout le tronçon (la neige du glacier).
       const zone = Number.isFinite(p.dist) ? zoneAt(s) : null;
@@ -549,6 +594,31 @@ export function createTrack(seed = 7, mapId = 'foret') {
       }
     }
   }
+  // Entre les maisons, un mur de soutènement : la rue est tenue des deux côtés et, comme contre une maison, on s'y arrête.
+  const walls = [];
+  if (street) {
+    const LEN = 2;
+    const stops = features.filter((f) => f.type === 'arch' || (f.type === 'jump' && f.look === 'rue'));
+    for (const side of [-1, 1]) {
+      for (let s = street.a; s < street.b; s += LEN) {
+        const sm = s + LEN / 2, f = sample(sm), u = tapeAt(sm) + 0.95, x = f.x + side * u * f.rx, z = f.z + side * u * f.rz;
+        if (wallrides.some((w) => w.side === side && sm > w.a && sm < w.b)) continue;
+        if (stops.some((a) => sm > (a.lipS ?? a.a) - 2 && sm < (a.lipS != null ? a.lipS + a.knuckle : a.b) + 2)) continue;
+        if (insideBuilding(x, z, 0.4) || insideBuilding(x + side * 0.8 * f.rx, z + side * 0.8 * f.rz, 0.2)) continue;
+        const q = nearest(x, z, null, 0, 3);
+        if (q.dist < tapeAt(q.s) + 0.5) continue; // (dans un carrefour : c'est l'autre rue)
+        const y0 = trailY(sm, side * (u - 0.4));
+        walls.push({ x, z, y: y0 - 1.5, h: Math.max(1.5, terrainHeight(x, z, f.d, u) - y0 + 0.6) + 1.5, len: LEN + 0.05, yaw: Math.atan2(-f.tx, -f.tz), side, s: sm });
+      }
+    }
+    // Le mur derrière chaque mur de palettes, plus haut que sa crête.
+    for (const w of wallrides) {
+      for (let s = w.a; s < w.b; s += LEN) {
+        const sm = s + LEN / 2, f = sample(sm), x = f.x + w.side * 4.95 * f.rx, z = f.z + w.side * 4.95 * f.rz;
+        walls.push({ x, z, y: f.c - 1, h: w.H + 3.2, len: LEN + 0.15, yaw: Math.atan2(-f.tx, -f.tz), side: w.side, s: sm, palettes: true });
+      }
+    }
+  }
   const nearBuilding = (x, z, m) => buildings.some((b) => Math.hypot(x - b.x, z - b.z) < Math.max(b.w, b.d) / 2 + m);
   /** Le point (x, z) est-il dans une maison (agrandie de m mètres) ? Au rectangle près, pas au cercle. */
   function insideBuilding(x, z, m = 0) {
@@ -670,6 +740,8 @@ export function createTrack(seed = 7, mapId = 'foret') {
       const p = nearest(x, z, null, 0, 4);
       let y = terrainHeight(x, z, p.dist < 30 && Number.isFinite(p.dist) ? sample(p.s).d : 0, p.dist);
       if (p.dist < RIBBON_HALF - 0.6 && p.inside) y = Math.min(y, trailY(p.s, clamp(p.u, -RIBBON_HALF, RIBBON_HALF)) - 0.25);
+      // (en ville, le relief ne perce jamais la rue, jusqu'à son mur)
+      else if (street && p.dist < RIBBON_HALF + 1.5) y = Math.min(y, sample(p.s).c - 0.3);
       const o = (j * nx + i) * 3;
       positions[o] = x; positions[o + 1] = y; positions[o + 2] = z;
       trail[j * nx + i] = Number.isFinite(p.dist) ? 1 - smoothstep(3, 9, p.dist) : 0;
@@ -751,7 +823,7 @@ export function createTrack(seed = 7, mapId = 'foret') {
     seed, map: { id: map.id, name: map.name, env: map.env, creek: map.creek || null, peloton: map.peloton || null, lift: map.lift || null, scenery: map.scenery || null }, length: L, count: n, DS, X, Z, TX, TZ, K, C, BANK, D,
     natural, terrainHeight, groundY, trailY, sample, nearest, surfaceAt, featureHeight, tapeAt, trailHalfAt, narrowAt, narrows, vmaxAt, trailDist, trailS, band,
     features, roots, rocks, bridges, onBridge, gates, respawns, speedTrap, sStart, sFinish, spawnS, controlS: cpS,
-    bounds, trees, treeNear, boulders, buildings, insideBuilding, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
+    bounds, trees, treeNear, boulders, buildings, insideBuilding, walls, wallrides, wallrideAt, street, village: layout.village || null, surfaces: layout.surfaces || [], buildTerrain, buildRibbon,
   };
 }
 

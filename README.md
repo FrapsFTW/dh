@@ -232,7 +232,7 @@ resserre à moins de 3 m, la trace à 1,5 m, et les bords se garnissent de tronc
 
 ### Les Ruelles
 
-Environ 600 m et 1 min 10 dans une vieille ville peinte, de l'église au quai du port : la rue haute, le grand escalier, le gap de la ruelle, le mur de la chapelle, l'escalier des lavandières, le passage voûté, le saut du port. Les marches sont de vraies marches (une tous les 70 cm), en pierre ; les maisons sont des obstacles, à un mètre derrière la rubalise. Le tracé est dans `src/sim/maps.js`, le décor dans `ville()`, `src/render/scenery.js`.
+Environ 600 m et 1 min 10 dans une vieille ville peinte, de l'église au quai du port : la rue haute, le grand escalier, le gap de la ruelle, le mur de la chapelle, l'escalier des lavandières, le passage voûté, le saut du port. Une chaussée de ville : plate d'un mur à l'autre, sans virage relevé ni ornière, avec trottoirs, bordures et caniveau ; des carrefours serrés presque à plat ; trois murs de palettes qu'on peut rouler en bas de la ville. Les marches sont de vraies marches (une tous les 50 cm, toutes de la même hauteur), en pierre ; les maisons sont des obstacles, à un mètre derrière la rubalise. Le tracé est dans `src/sim/maps.js`, le décor dans `ville()`, `src/render/scenery.js`.
 
 ## La physique
 

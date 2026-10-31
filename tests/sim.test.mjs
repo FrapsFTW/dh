@@ -39,7 +39,8 @@ test('chaque piste est faisable : virages assez larges, portes dans l\'ordre, au
     const t = tracks[m];
     let kmax = 0;
     for (const k of t.K) kmax = Math.max(kmax, Math.abs(k));
-    assert.ok(1 / kmax > 9, `${m} : virage le plus serré ${(1 / kmax).toFixed(1)} m`);
+    // (en ville, on tourne court, d'une rue à l'autre)
+    assert.ok(1 / kmax > (m === 'ville' ? 6 : 9), `${m} : virage le plus serré ${(1 / kmax).toFixed(1)} m`);
     for (let i = 1; i < t.gates.length; i++) assert.ok(t.gates[i].s > t.gates[i - 1].s);
     assert.equal(t.gates[0].kind, 'depart');
     assert.equal(t.gates.at(-1).kind, 'arrivee');
@@ -618,10 +619,72 @@ test('Les Ruelles : des pavés, des escaliers de vraies marches en pierre, des r
       assert.ok(rise > 0.15 && rise < 0.35, `${f.name}, marche à ${s.toFixed(0)} m : ${rise.toFixed(2)} m`);
     }
   }
-  // Entre les façades : moins de 4 m de large sur la plus grande partie de la descente.
+  // Entre les façades : moins de 4 m de large sur près de la moitié de la descente (la rue s'ouvre aux murs de palettes).
   let narrow = 0, n = 0;
   for (let s = t.sStart; s < t.sFinish; s += 1) { n++; if (t.tapeAt(s) * 2 < 4) narrow++; }
-  assert.ok(narrow / n > 0.6, `étroit sur ${((narrow / n) * 100).toFixed(0)} % seulement`);
+  assert.ok(narrow / n > 0.45, `étroit sur ${((narrow / n) * 100).toFixed(0)} % seulement`);
+});
+
+test('à basse vitesse, le vélo tourne court et tout de suite ; à pleine vitesse, il ne change pas', () => {
+  const sim = createSim({ map: 'ville', mode: 'normal' }), t = sim.track;
+  const turn = (v) => {
+    sim.bike.placeOnTrack(t.length - 45, v);
+    sim.race.s = t.length - 45;
+    let turned = 0, prev = heading(sim.bike.state()), time = 0, dist = 0;
+    while (Math.abs(turned) < Math.PI / 4 && time < 3) {
+      const st = sim.bike.state();
+      sim.step({ ...idle, steer: 1, pedal: st.forwardSpeed < v ? 1 : 0, brakeRear: st.forwardSpeed > v + 0.1 ? 0.15 : 0 });
+      const h = heading(sim.bike.state());
+      turned += Math.atan2(Math.sin(h - prev), Math.cos(h - prev));
+      prev = h; time += STEP; dist += sim.bike.state().speed * STEP;
+    }
+    return { time, dist };
+  };
+  assert.ok(turn(3.5).time < 0.8, `45° à 3,5 m/s en ${turn(3.5).time.toFixed(2)} s`);
+  assert.ok(turn(5).time < 1, `45° à 5 m/s en ${turn(5).time.toFixed(2)} s`);
+});
+
+test('Les Ruelles : une chaussée de ville, plate, sans virage relevé ni herbe, entre des murs', () => {
+  const t = tracks.ville;
+  assert.ok(t.walls.length > 50, `${t.walls.length} murs`);
+  for (let s = t.street.a + 5; s < t.street.b - 5; s += 1) {
+    assert.equal(t.sample(s).bank, 0);
+    if (t.features.some((f) => (f.type === 'jump' || f.type === 'stairs') && s > f.a - 1 && s < f.b + 1)) continue;
+    // (d'un bord de la rue à l'autre, pas un centimètre de différence : ni dévers, ni ornière)
+    assert.ok(Math.abs(t.trailY(s, 1.5) - t.trailY(s, -1.5)) < 0.01, `dévers à ${s} m`);
+    assert.ok(Math.abs(t.trailY(s, 0) - t.trailY(s, 1)) < 0.01, `ornière à ${s} m`);
+    const f = t.sample(s);
+    for (const u of [-1.7, 1.7, -2.6, 2.6]) assert.notEqual(t.surfaceAt(f.x + u * f.rx, f.z + u * f.rz).name, 'herbe', `de l'herbe à ${s} m`);
+  }
+  // Une marche est un palier : plate d'un mur à l'autre, et chaque contremarche reste franchissable.
+  for (const f of t.features.filter((f) => f.type === 'stairs')) {
+    for (let d = 0; d + f.step < f.b - f.a; d += f.step) {
+      const s = f.a + d + 0.1;
+      assert.ok(Math.abs(t.trailY(s, -1.5) - t.trailY(s, 1.5)) < 0.001);
+      assert.ok(t.trailY(s, 0) - t.trailY(s + f.step, 0) < 0.3);
+    }
+  }
+});
+
+test('Les Ruelles : on roule sur les murs de palettes sans tomber', () => {
+  const sim = createSim({ map: 'ville', mode: 'normal' }), t = sim.track;
+  assert.equal(t.wallrides.length, 3);
+  for (const w of t.wallrides) {
+    sim.reset();
+    sim._autopilot = null;
+    sim.bike.placeOnTrack(w.a + 6, 7, w.side * 3.6);
+    sim.race.s = w.a + 6;
+    let top = 0;
+    for (let i = 0; i < 12 / STEP && sim.race.s < w.b + 4 && !sim.bike.crashed; i++) {
+      sim.step(autopilot(sim, { line: (s) => (s < w.b - 6 ? w.side * 4 : 0), vmax: 8 }));
+      const st = sim.bike.state();
+      top = Math.max(top, t.wallrideAt(sim.race.s, sim.race.u));
+    }
+    assert.equal(sim.bike.crashed, null, `${w.name} : ${sim.bike.crashed?.reason}`);
+    assert.ok(top > 0.7, `${w.name} : monté à ${top.toFixed(2)} m`);
+    const f = t.sample((w.a + w.b) / 2), u = w.side * 3;
+    assert.equal(t.surfaceAt(f.x + u * f.rx, f.z + u * f.rz).name, 'bois');
+  }
 });
 
 test("Les Ruelles : des maisons tout le long, jamais dans le balisage ni sur les rues qu'on saute", () => {

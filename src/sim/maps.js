@@ -666,37 +666,41 @@ const single = {
 // ---------------------------------------------------------------------------------------------------------------
 const VILLE_SEA = -110; // l'altitude de la mer
 const VILLE_MARKS = {};
-const VILLE_LEGS = { rueHaute: 80, escalier1: 44, peintres: 66, chapelle: 58, escalier2: 40, voute: 48, port: 46, quai: 90 };
+const VILLE_ARCS = {}; // la longueur du carrefour juste avant chaque rue
+const VILLE_LEGS = { rueHaute: 80, escalier1: 44, peintres: 66, chapelle: 58, escalier2: 40, voute: 48, port: 66, quai: 90 };
 const VILLE_CONTROL = (() => {
   const pts = [[0, 30], [0, 16]];
   let x = 0, z = 16, h = 0; // h : le cap, depuis le sens de la pente (-z), positif vers +x
   const step = (ds, dh) => { x += Math.sin(h + dh / 2) * ds; z -= Math.cos(h + dh / 2) * ds; h += dh; pts.push([x, z]); };
   const line = (len) => { const n = Math.max(1, Math.round(len / 5)); for (let k = 0; k < n; k++) step(len / n, 0); };
-  const arc = (to, R) => { const len = Math.abs(to - h) * R, n = Math.max(2, Math.round(len / 5)), dh = (to - h) / n; for (let k = 0; k < n; k++) step(len / n, dh); };
-  const street = (k) => { VILLE_MARKS[k] = pts.length - 1; line(VILLE_LEGS[k]); };
+  let lastArc = 0;
+  const arc = (to, R) => { const len = Math.abs(to - h) * R, n = Math.max(3, Math.round(len / 2.5)), dh = (to - h) / n; lastArc = len; for (let k = 0; k < n; k++) step(len / n, dh); };
+  const street = (k) => { VILLE_MARKS[k] = pts.length - 1; VILLE_ARCS[k] = lastArc; lastArc = 0; line(VILLE_LEGS[k]); };
   line(22);
-  arc(1.05, 13); street('rueHaute');
-  arc(0, 11); street('escalier1');
-  arc(-1.15, 11); street('peintres');
-  arc(1.15, 10.5); street('chapelle');
-  arc(0, 11); street('escalier2');
-  arc(-0.85, 12); street('voute');
-  arc(0, 12); street('port');
+  // Des carrefours : on tourne court d'une rue à l'autre, à angle franc.
+  arc(1.05, 8); street('rueHaute');
+  arc(0, 8); street('escalier1');
+  arc(-1.15, 8); street('peintres');
+  arc(1.15, 8); street('chapelle');
+  arc(0, 8); street('escalier2');
+  arc(-0.85, 8); street('voute');
+  arc(0, 8); street('port');
   street('quai');
   return pts;
 })();
 
+const VILLE_QUAI_Z = -VILLE_CONTROL[VILLE_MARKS.quai][1] - 2; // là où la colline s'adoucit : au début du quai
 const ville = {
   id: 'ville',
   name: 'Les Ruelles',
   tag: 'Urbain · escaliers',
   stats: '600 m · 1 min 10',
-  blurb: "Environ 600 m, 1 min 10. Une vieille ville sur la colline, au-dessus du port : maisons peintes de toutes les couleurs, pavés, ruelles serrées. Le parvis de l'église, deux grands escaliers, le gap de la ruelle, des murets à sauter, le passage voûté, et le saut du port avant l'arrivée sur le quai.",
+  blurb: "Environ 600 m, 1 min 10. Une vieille ville sur la colline, au-dessus du port : maisons peintes de toutes les couleurs, pavés, ruelles serrées. Des rues à plat d'un mur à l'autre et des carrefours à angle franc, où il faut freiner fort et relancer. Le parvis de l'église, deux grands escaliers, le gap de la ruelle, des murets à sauter, le passage voûté, trois murs de palettes à rouler, et le saut du port avant l'arrivée sur le quai.",
   control: VILLE_CONTROL,
   scenery: 'ville',
   // La colline : une pente régulière (30 %), qui s'adoucit sur le quai ; au-delà, la jetée et la mer.
   relief(seed) {
-    const SLOPE = 0.3, QUAI_Z = 345;
+    const SLOPE = 0.3, QUAI_Z = VILLE_QUAI_Z;
     const hill = (z) => SLOPE * z + (SLOPE - 0.03) * 8 * softplus(-(z + QUAI_Z) / 8);
     const coast = (z) => { const t = Math.max(0, -(z + 450)); return 0.3 * t * t / (t + 30); };
     return (x, z) => hill(z) - coast(z) + 1.4 * fbm(x / 60, z / 60, 3, seed) + 0.0004 * x * x;
@@ -707,39 +711,56 @@ const ville = {
     const sStart = cpS[1] + 1;
     const sFinish = at('quai', 0.35);
     // Un escalier : des marches de pierre (une tous les step m), qu'on descend à 6 m/s au plus.
-    const stairs = (name, a, b, step) => ({ type: 'stairs', name, a, b, step, speed: 6, surface: 'roche' });
+    // (calées sur le pas de la piste et sur un nombre entier de marches : chaque marche est un vrai palier)
+    const stairs = (name, a0, b0, step) => { const a = Math.round(a0 / 0.25) * 0.25; return { type: 'stairs', name, a, b: a + step * Math.round((b0 - a) / step), step, even: true, speed: 6, surface: 'roche' }; };
+    // (un carrefour : de la fin de la rue d'avant au début de la rue k)
+    const corner = (k) => [at(k, 0) - VILLE_ARCS[k], at(k, 0)];
+    // Un mur de palettes, adossé à l'extérieur du carrefour (side : +1 à droite du tracé).
+    const palettes = (name, [a, b], side) => ({ name, a: a - 7, b: b + 7, side, u0: 1.9, top: 4.7, H: 2, ramp: 5 });
+    const wallrides = [
+      palettes('le mur des lavandières', corner('voute'), 1),
+      palettes('le mur du marché', corner('port'), -1),
+      palettes('le mur du port', [at('quai', 0.18), at('quai', 0.27)], 1),
+    ];
     return {
       sStart,
       sFinish,
       spawnS: cpS[0] + 3,
-      speedTrap: at('port', 0.05),
+      speedTrap: at('port', 0.3),
       features: [
         { type: 'startRamp', a: cpS[0], b: sStart, height: 1.6 },
         // ----- La rue haute -----
         { type: 'jump', kind: 'drop', look: 'muret', name: 'la marche du parvis', a: at('rueHaute', 0.12), lipLen: 3, lipH: 0.4, knuckle: 0.8, clear: 0.9, speed: 7, dig: 1.2, runout: 12 },
         { type: 'jump', kind: 'table', look: 'bois', name: 'le kicker de la rue haute', a: at('rueHaute', 0.5), lipLen: 4, lipH: 0.8, knuckle: 3.5, clear: 0.5, speed: 9, dig: 1.5, landFlatten: 0.15 },
         // ----- Le grand escalier : deux volées, un palier entre les deux -----
-        stairs('le grand escalier', at('escalier1', 0.08), at('escalier1', 0.4), 0.7),
-        stairs('le grand escalier', at('escalier1', 0.5), at('escalier1', 0.8), 0.7),
+        stairs('le grand escalier', at('escalier1', 0.08), at('escalier1', 0.4), 0.5),
+        stairs('le grand escalier', at('escalier1', 0.5), at('escalier1', 0.8), 0.5),
         // ----- La rue des peintres : une rue en travers, qu'on saute -----
         { type: 'jump', kind: 'gap', look: 'rue', name: 'le gap de la ruelle', a: at('peintres', 0.42), lipLen: 5, lipH: 1.0, knuckle: 4.5, clear: 0.8, touchLen: 4.5, dip: -1.2, speed: 9.5, dig: 3, landFlatten: 0.25 },
-        { type: 'brakeBumps', a: at('peintres', 0.8), b: at('peintres', 0.95) },
         // ----- Le lacet de la chapelle -----
         { type: 'jump', kind: 'drop', look: 'muret', name: 'le mur de la chapelle', a: at('chapelle', 0.55), lipLen: 3, lipH: 0.4, knuckle: 0.8, clear: 1.0, speed: 7.5, dig: 1.3, runout: 12 },
         // ----- L'escalier des lavandières -----
-        stairs("l'escalier des lavandières", at('escalier2', 0.08), at('escalier2', 0.75), 0.7),
+        stairs("l'escalier des lavandières", at('escalier2', 0.08), at('escalier2', 0.75), 0.5),
         // ----- Le passage voûté, la marche du marché -----
         { type: 'arch', name: 'le passage voûté', a: at('voute', 0.22), b: at('voute', 0.22) + 6 },
-        { type: 'jump', kind: 'drop', look: 'muret', name: 'la marche du marché', a: at('voute', 0.7), lipLen: 3, lipH: 0.5, knuckle: 1, clear: 1.0, speed: 8, dig: 1.4, runout: 12 },
+        { type: 'jump', kind: 'drop', look: 'muret', name: 'la marche du marché', a: at('voute', 0.46), lipLen: 3, lipH: 0.5, knuckle: 1, clear: 1.0, speed: 8, dig: 1.4, runout: 12 },
         // ----- La descente du port : le saut par-dessus la route du port -----
-        { type: 'jump', kind: 'gap', look: 'rue', name: 'le saut du port', a: at('port', 0.3), lipLen: 6, lipH: 1.2, knuckle: 6.5, clear: 0.9, touchLen: 5, dip: -1.3, speed: 11.5, dig: 3.3, landFlatten: 0.2 },
+        { type: 'jump', kind: 'gap', look: 'rue', name: 'le saut du port', a: at('port', 0.48), lipLen: 6, lipH: 1.2, knuckle: 6.5, clear: 0.9, touchLen: 5, dip: -1.3, speed: 11.5, dig: 3.3, landFlatten: 0.2 },
         { type: 'arena', a: at('quai', 0.15), b: L },
       ],
       surfaces: [{ a: sStart, b: L, surface: 'paves', edge: 'paves' }],
+      // Une ville, pas un sentier : la chaussée est plate d'un mur à l'autre, sans virage relevé ni ornière, bordée de
+      // trottoirs. Les carrefours sont presque à plat (landings) : toute la pente se reprend dans les rues.
+      street: { a: sStart + 6, b: at('quai', 0), flat: 6, curb: 0.12, plaza: at('quai', 0), landings: ['rueHaute', 'escalier1', 'peintres', 'chapelle', 'escalier2', 'voute', 'port'].map(corner) },
+      wallrides,
+      // (autour d'un mur de palettes, la rue s'ouvre)
+      wide: wallrides.map((w) => ({ a: w.a - 6, b: w.b + 6, half: 5, open: 6, close: 6 })),
       // Les ruelles, balisées serré : 4,4 m entre les rubalises dans la rue haute, 3,8 m ensuite.
       narrow: [
         { name: 'la rue haute', a: sStart + 30, b: at('escalier1', 0), half: 2.2 },
-        { name: 'les ruelles', a: at('escalier1', 0) + 8, b: at('port', 0.15), half: 1.9 },
+        { name: 'les ruelles', a: at('escalier1', 0) + 8, b: wallrides[0].a - 10, half: 1.9 },
+        { name: 'la descente du port', a: wallrides[1].b + 10, b: at('port', 0.4), half: 1.9 },
+        { name: 'le passage voûté', a: wallrides[0].b + 10, b: wallrides[1].a - 10, half: 1.9 },
       ],
       // En ville, le pilote auto ne dépasse pas 29 km/h : entre les façades, pas de place pour élargir un virage. Sauf
       // dans les élans des sauts, qui demandent leur vitesse.

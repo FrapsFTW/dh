@@ -458,6 +458,7 @@ export function createVegetation(track, forestAt, { sunDir = new THREE.Vector3(0
     if (track.village && Number.isFinite(near.dist) && near.s > track.village.a - 4 && near.s < track.village.b && near.dist < 5) return true;
     // (une place pavée : rien ne pousse, jusqu'au bout du quai)
     if (track.village && track.village.plaza != null && track.trailDist(x, z) < 45 && track.trailS(x, z) > track.village.plaza) return true;
+    if (track.street && track.trailDist(x, z) < 9) return true; // (rien ne pousse dans une rue)
     return track.buildings.length > 0 && nearHouse(x, z, 1);
   };
   // Une piste plus longue a plus de sous-bois (la même densité le long de la piste).
